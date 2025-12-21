@@ -1,0 +1,26 @@
+[project]
+name = "problembasedselfstudy"
+version = "0.1.0"
+description = "A specialized self-study planner based on textbooks"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32.5",
+    "pytest>=8.0.0",
+    "basedpyright>=1.36.1",
+    "pymupdf>=1.23.0",
+    "toml>=0.10.2",
+    "pillow>=10.0.0",
+    "llm>=0.28",
+    "numpy>=2.3.5",
+    "llm-gemini",
+    "pydantic>=2.12.5",
+    "sqlalchemy>=2.0.45",
+    "ruff>=0.14.10",
+]
+
+[tool.uv.sources]
+llm-gemini = { git = "https://github.com/greasycat/llm-gemini.git" }
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
