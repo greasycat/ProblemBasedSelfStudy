@@ -29,6 +29,7 @@ from sqlalchemy.orm import (
     Session,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 
 class Base(DeclarativeBase):
@@ -48,6 +49,8 @@ class BookInfo(Base):
     book_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     book_embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     book_file_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    book_toc_end_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    book_alignment_offset: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     
     # Relationships to other tables
     chapters: Mapped[list["ChapterInfo"]] = relationship(
@@ -92,7 +95,7 @@ class ChapterInfo(Base):
     end_page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     book_index_string: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    book_id: Mapped[Optional[int]] = mapped_column(
+    book_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("book_info.book_id", ondelete="CASCADE"),
         nullable=False,
@@ -142,7 +145,7 @@ class SectionInfo(Base):
         ForeignKey("chapter_info.chapter_id", ondelete="SET NULL"),
     )
     book_index_string: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    book_id: Mapped[Optional[int]] = mapped_column(
+    book_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("book_info.book_id", ondelete="CASCADE"),
         nullable=False,
@@ -180,7 +183,7 @@ class PageInfo(Base):
     embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     related_chapters: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     related_section_id: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
-    book_id: Mapped[Optional[int]] = mapped_column(
+    book_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("book_info.book_id", ondelete="CASCADE"),
         nullable=False,
@@ -222,7 +225,7 @@ class ExerciseInfo(Base):
     related_chapters: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     related_section_id: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
-    book_id: Mapped[Optional[int]] = mapped_column(
+    book_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("book_info.book_id", ondelete="CASCADE"),
         nullable=False,
@@ -265,7 +268,7 @@ class ExerciseDetails(Base):
     study_guide: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     estimated_time_to_complete: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     difficulty_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    chapter_id: Mapped[Optional[str]] = mapped_column(
+    chapter_id: Mapped[Optional[int]] = mapped_column(
         String,
         ForeignKey("chapter_info.chapter_id", ondelete="SET NULL"),
         nullable=True
@@ -275,7 +278,7 @@ class ExerciseDetails(Base):
         ForeignKey("section_info.section_id", ondelete="SET NULL"),
         nullable=True
     )
-    book_id: Mapped[Optional[int]] = mapped_column(
+    book_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("book_info.book_id", ondelete="CASCADE"),
         nullable=True
@@ -376,3 +379,158 @@ class TextBookContext:
         """Compatibility property for backward compatibility with raw SQLite connection"""
         # Return None to indicate SQLAlchemy is being used instead of raw connection
         return None
+    
+    def get_book_by_file_name(self, book_file_name: str) -> Optional[BookInfo]:
+        with self.new_session() as session:
+            return _query_book_by_file_name(session, book_file_name)
+
+    def create_book(self, book_name: str, book_author: str, book_keywords: str, book_file_name: str) -> BookInfo:
+        with self.new_session() as session:
+            book_info = _create_book_and_return_info(session, book_name, book_author, book_keywords, book_file_name)
+            if book_info is None:
+                raise ValueError("Failed to create book")
+            return book_info
+    
+    def get_book_toc_end_page(self, book_id: int, default_value: int) -> int:
+        with self.new_session() as session:
+            book_info = _query_book_by_id(session, book_id)
+            if book_info is not None and book_info.book_toc_end_page is not None:
+                return book_info.book_toc_end_page
+            return default_value
+        
+    def update_book_toc_end_page(self, book_id: int, toc_end_page: int) -> None:
+        with self.new_session() as session:
+            session.query(BookInfo).filter(BookInfo.book_id == book_id).update({BookInfo.book_toc_end_page: toc_end_page})
+            session.commit()
+    
+    def get_book_alignment_offset(self, book_id: int, default_value: int) -> int:
+        with self.new_session() as session:
+            book_info = _query_book_by_id(session, book_id)
+            if book_info is not None and book_info.book_alignment_offset is not None:
+                return book_info.book_alignment_offset
+            return default_value
+        
+    def update_book_alignment_offset(self, book_id: int, alignment_offset: int) -> None:
+        with self.new_session() as session:
+            session.query(BookInfo).filter(BookInfo.book_id == book_id).update({BookInfo.book_alignment_offset: alignment_offset})
+            session.commit()
+        
+    def get_or_create_chapter(self, book_id: int, title: str, index_string: str, start_page: int, end_page: int) -> Optional[int]:
+        with self.new_session() as session:
+            existing = _query_chapter_by_book_id_and_title(session, book_id, title)
+            if existing:
+                return existing.chapter_id
+            
+            chapter_info = ChapterInfo(
+                title=title,
+                book_index_string=index_string,
+                start_page_number=start_page,
+                end_page_number=end_page,
+                book_id=book_id
+            )
+            return _save_with_error_handling(session, chapter_info)
+    
+    def get_chapters_by_book_id(self, book_id: int) -> list[ChapterInfo]:
+        with self.new_session() as session:
+            return _query_chapters_by_book_id(session, book_id)
+    
+    def get_or_create_section(self, book_id: int, chapter_id: int, title: str, index_string: str, start_page: int, end_page: int) -> Optional[int]:
+        with self.new_session() as session:
+            existing = _query_section_by_book_id_and_title(session, book_id, title)
+            if existing:
+                return existing.section_id
+            
+            section_info = SectionInfo(
+                title=title,
+                book_index_string=index_string,
+                start_page_number=start_page,
+                end_page_number=end_page,
+                chapter_id=chapter_id,
+                book_id=book_id
+            )
+            return _save_with_error_handling(session, section_info)
+        
+    def get_sections_by_book_id(self, book_id: int) -> list[SectionInfo]:
+        with self.new_session() as session:
+            return _query_sections_by_book_id(session, book_id)
+    
+    def get_all_books(self) -> list[BookInfo]:
+        """Get all books from the database"""
+        with self.new_session() as session:
+            return _query_all_books(session)
+
+def _save_with_error_handling(session: Session, obj: Base):
+    return_field = None
+    if isinstance(obj, ChapterInfo):
+        return_field = "chapter_id"
+    elif isinstance(obj, SectionInfo):
+        return_field = "section_id"
+    elif isinstance(obj, PageInfo):
+        return_field = "page_id"
+    elif isinstance(obj, ExerciseInfo) or isinstance(obj, ExerciseDetails):
+        return_field = "exercise_id"
+    else:
+        raise ValueError(f"Unsupported object type: {type(obj)}")
+    
+    try:
+        session.add(obj)
+        session.commit()
+        session.flush()  # Flush to get auto-increment ID
+        obj_id = getattr(obj, return_field, None)
+        return obj_id
+    except IntegrityError:
+        print(f" {return_field} already exists, skipping")
+        session.rollback()
+        if isinstance(obj, ChapterInfo):
+            existing = _query_chapter_by_book_id_and_title(session, obj.book_id, obj.title)
+            return existing.chapter_id if existing else None
+        elif isinstance(obj, SectionInfo):
+            raise NotImplementedError("TODO: Implement section query by book ID and title")
+    except Exception as e:
+        print(f"Error adding {return_field}: {e}")
+        session.rollback()
+        return None
+    
+def _query_chapters_by_book_id(session: Session, book_id: int) -> list[ChapterInfo]:
+    """Query chapters by book ID"""
+    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id).order_by(ChapterInfo.start_page_number).all()
+
+def _query_chapter_by_book_id_and_title(session: Session, book_id: int, title: str) -> Optional[ChapterInfo]:
+    """Query chapter by book ID and title"""
+    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id, ChapterInfo.title == title).order_by(ChapterInfo.start_page_number).first()
+
+def _query_sections_by_book_id(session: Session, book_id: int) -> list[SectionInfo]:
+    """Query sections by book ID"""
+    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id).order_by(SectionInfo.start_page_number).all()
+
+def _query_sections_by_book_id_and_chapter_id(session: Session, book_id: int, chapter_id: int) -> list[SectionInfo]:
+    """Query sections by chapter ID"""
+    return session.query(SectionInfo).filter(SectionInfo.chapter_id == chapter_id).order_by(SectionInfo.start_page_number).all()
+
+def _query_section_by_book_id_and_title(session: Session, book_id: int, title: str) -> Optional[SectionInfo]:
+    """Query section by book ID and chapter ID and title"""
+    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id, SectionInfo.title == title).order_by(SectionInfo.start_page_number).first()
+
+def _query_book_by_id(session: Session, book_id: int) -> Optional[BookInfo]:
+    """Query book by ID"""
+    return session.query(BookInfo).filter(BookInfo.book_id == book_id).first()
+
+def _query_book_by_file_name(session: Session, file_name: str) -> Optional[BookInfo]:
+    """Query book by file name"""
+    return session.query(BookInfo).filter(BookInfo.book_file_name == file_name).first()
+
+def _query_all_books(session: Session) -> list[BookInfo]:
+    """Query all books"""
+    return session.query(BookInfo).all()
+
+def _create_book_and_return_info(session: Session, book_name: str, book_author: str, book_keywords: str, book_file_name: str) -> Optional[BookInfo]:
+        book_info = BookInfo(
+            book_name=book_name,
+            book_author=book_author,
+            book_keywords=book_keywords,
+            book_file_name=book_file_name,
+        )
+        session.add(book_info)
+        session.commit()
+        session.refresh(book_info)
+        return book_info

@@ -24,10 +24,11 @@ def main():
     llm = LLM()
     with TextBookContext(db_path=db_path) as context:
         with LazyTextbookReader("tests/textbooks/topology_scan.pdf", llm, context) as reader:
-            reader.extract_book_info()
-            reader.extract_toc()
-            pass
-
+            reader.update_book_info()
+            reader.update_toc()
+            # reader.update_alignment_offset(page_number=15)
+            # reader.interactive_alignment_offset()
+            reader.check_alignment_offset()
 
 if __name__ == "__main__":
     main()
