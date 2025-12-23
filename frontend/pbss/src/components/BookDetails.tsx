@@ -39,14 +39,14 @@ export function BookDetails({ isOpen, onClose, book, onUpdate }: BookDetailsProp
 
     try {
       await bookApi.updateBookInfo({
-        pdf_path: book.pdf_path,
+        book_id: book.book_id,
         overwrite: true,
       });
       setSuccess('Book information updated successfully');
       // Reload book details
       const [totalPagesResponse, tocResponse] = await Promise.all([
-        bookApi.getTotalPages({ pdf_path: book.pdf_path }),
-        bookApi.checkTocExists(book.pdf_path).catch(() => ({ pdf_path: book.pdf_path, toc_exists: false })),
+        bookApi.getTotalPages(book.book_id),
+        bookApi.checkTocExists(book.book_id).catch(() => ({ book_id: book.book_id, toc_exists: false })),
       ]);
       onUpdate({
         ...book,
@@ -68,12 +68,12 @@ export function BookDetails({ isOpen, onClose, book, onUpdate }: BookDetailsProp
 
     try {
       await bookApi.updateToc({
-        pdf_path: book.pdf_path,
+        book_id: book.book_id,
         overwrite: true,
         caching: true,
       });
       setSuccess('Table of contents updated successfully');
-      const tocResponse = await bookApi.checkTocExists(book.pdf_path);
+      const tocResponse = await bookApi.checkTocExists(book.book_id);
       onUpdate({ ...book, toc_exists: tocResponse.toc_exists });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update TOC');
@@ -94,8 +94,8 @@ export function BookDetails({ isOpen, onClose, book, onUpdate }: BookDetailsProp
 
     try {
       const [textResponse, imageResponse] = await Promise.all([
-        bookApi.getPageText({ pdf_path: book.pdf_path, page_number: selectedPage }),
-        bookApi.getPageImage({ pdf_path: book.pdf_path, page_number: selectedPage, dpi: 150 }),
+        bookApi.getPageText({ book_id: book.book_id, page_number: selectedPage }),
+        bookApi.getPageImage({ book_id: book.book_id, page_number: selectedPage, dpi: 150 }),
       ]);
       setPageText(textResponse.text);
       setPageImage(`data:image/png;base64,${imageResponse.image_base64}`);
@@ -108,7 +108,7 @@ export function BookDetails({ isOpen, onClose, book, onUpdate }: BookDetailsProp
 
   if (!book) return null;
 
-  const fileName = book.pdf_path.split('/').pop() || book.pdf_path;
+  const fileName = book.book_name || `Unknown Book ${book.book_id}`;
 
   return (
     <Modal
@@ -137,7 +137,7 @@ export function BookDetails({ isOpen, onClose, book, onUpdate }: BookDetailsProp
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <label className="font-semibold text-text-secondary text-sm">Path:</label>
-              <span className="text-text-primary break-all font-mono p-2 bg-background-subtle rounded shadow-sm">{book.pdf_path}</span>
+              <span className="text-text-primary break-all font-mono p-2 bg-background-subtle rounded shadow-sm">{book.book_name}</span>
             </div>
             {book.total_pages !== undefined && (
               <div className="flex flex-col gap-2">

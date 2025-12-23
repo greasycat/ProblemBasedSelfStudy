@@ -1,0 +1,9 @@
+---
+alwaysApply: true
+---
+
+Always use proper package manager to install packages
+
+- `uv`
+- `bun`
+

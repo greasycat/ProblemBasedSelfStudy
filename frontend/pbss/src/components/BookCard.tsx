@@ -10,8 +10,7 @@ interface BookCardProps {
 }
 
 export function BookCard({ book, onView, onEdit, onDelete }: BookCardProps) {
-  const fileName = book.pdf_path.split('/').pop() || book.pdf_path;
-  const displayName = book.book_name || fileName;
+  const displayName = book.book_name || `Unknown Book ${book.book_id}`;
 
   return (
     <Card className="flex flex-col h-full">
@@ -71,10 +70,6 @@ export function BookCard({ book, onView, onEdit, onDelete }: BookCardProps) {
           )}
         </div>
 
-        {/* File Path */}
-        <div className="text-xs text-text-secondary font-mono break-all p-2 bg-background-subtle rounded shadow-sm">
-          {book.pdf_path}
-        </div>
       </div>
       <div className="flex gap-2 pt-4 shadow-sm flex-wrap">
         <Button variant="primary" size="small" onClick={() => onView(book)} className="flex-1 min-w-[80px]">

@@ -50,6 +50,30 @@ export default defineConfig({
         target: 'http://localhost:8765',
         changeOrigin: true,
       },
+      '/chapters': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+      },
+      '/upload-book': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+      },
+      '/delete-book': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+      },
+      '/sections': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+      },
+      '/pages': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+      },
+      '/view-pdf': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+      },
     },
   },
 })

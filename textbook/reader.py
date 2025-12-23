@@ -47,11 +47,11 @@ class PageSchema(BaseModel):
 
 class LazyTextbookReader:
     
-    def __init__(self, pdf_path: str, llm: LLM, context: TextBookContext, force_text_only_extraction: bool = False):
+    def __init__(self, pdf_path: Path, llm: LLM, context: TextBookContext, force_text_only_extraction: bool = False):
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
         
-        self.pdf_path = Path(pdf_path)
+        self.pdf_path = pdf_path
         self.pdf_name = self.pdf_path.stem
 
         self.llm = llm

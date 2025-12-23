@@ -458,6 +458,25 @@ class TextBookContext:
         """Get all books from the database"""
         with self.new_session() as session:
             return _query_all_books(session)
+    
+    def delete_book_by_file_name(self, book_file_name: str) -> bool:
+        """
+        Delete a book from the database by file name
+        
+        Args:
+            book_file_name: The file name (pdf_path) of the book to delete
+            
+        Returns:
+            True if the book was deleted, False if it was not found
+        """
+        with self.new_session() as session:
+            book = _query_book_by_file_name(session, book_file_name)
+            if book is None:
+                return False
+            
+            session.delete(book)
+            session.commit()
+            return True
 
 def _save_with_error_handling(session: Session, obj: Base):
     return_field = None

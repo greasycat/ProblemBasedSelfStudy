@@ -11,7 +11,7 @@ const variantClasses = {
   primary: 'bg-primary text-white hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-lg shadow-primary/20',
   secondary: 'bg-primary-light text-white hover:bg-primary hover:-translate-y-0.5 hover:shadow-lg shadow-primary/20',
   danger: 'bg-error text-white hover:bg-red-600 hover:-translate-y-0.5 hover:shadow-lg shadow-error/20',
-  ghost: 'bg-transparent text-text-primary border-2 border-border hover:bg-background-subtle',
+  ghost: 'bg-transparent text-text-primary hover:bg-background-subtle',
 };
 
 const sizeClasses = {
@@ -30,7 +30,7 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-lg font-medium font-inherit cursor-pointer transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed';
+  const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-lg cursor-pointer transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed';
   const variantClass = variantClasses[variant];
   const sizeClass = sizeClasses[size];
   const loadingClass = isLoading ? 'relative text-transparent' : '';
@@ -44,7 +44,7 @@ export function Button({
       {isLoading ? (
         <>
           <span className="invisible">{children}</span>
-          <span className="absolute inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
         </>
       ) : (
         children

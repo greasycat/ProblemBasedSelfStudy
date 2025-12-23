@@ -6,3 +6,4 @@ export { Input } from './Input';
 export { Alert } from './Alert';
 export { Chat } from './Chat';
 export { Sidebar } from './Sidebar';
+export { TableOfContents } from './TableOfContents';

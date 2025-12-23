@@ -8,9 +8,12 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  maxWidth?: string;
+  hideHeader?: boolean;
+  noShadow?: boolean;
 }
 
-export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-2xl', hideHeader = false, noShadow = false }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -42,16 +45,25 @@ export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) 
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl"
+        className={`bg-white rounded-xl ${maxWidth} w-full max-h-[90vh] flex flex-col ${noShadow ? '' : 'shadow-2xl'} ${hideHeader ? 'relative' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 shadow-sm flex justify-between items-center bg-background-off">
-          <h2 className="m-0 text-text-primary text-2xl font-semibold">{title}</h2>
-          <Button variant="ghost" size="small" onClick={onClose}>
-            ×
-          </Button>
-        </div>
-        <div className="p-6 overflow-y-auto flex-1 bg-white">{children}</div>
+        {!hideHeader && (
+          <div className="px-6 py-4 shadow-sm flex justify-between items-center bg-background-off">
+            <h2 className="m-0 text-text-primary text-2xl font-semibold">{title}</h2>
+            <Button variant="ghost" size="small" onClick={onClose}>
+              ×
+            </Button>
+          </div>
+        )}
+        {hideHeader && (
+          <div className="absolute top-2 right-2 z-10">
+            <Button variant="ghost" size="small" onClick={onClose}>
+              ×
+            </Button>
+          </div>
+        )}
+        <div className={`${hideHeader ? '' : 'p-6'} overflow-y-auto flex-1 bg-white`}>{children}</div>
         {footer && (
           <div className="px-6 py-4 shadow-lg flex justify-end gap-4 bg-background-off">
             {footer}

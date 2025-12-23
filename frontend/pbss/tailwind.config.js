@@ -8,12 +8,12 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#3083DC', // brilliant azure
-          light: '#a8cbf0', // light azure
-          dark: '#1e6bb8', // darker azure for hover
+          DEFAULT: '#8C5E35', // brilliant azure
+          light: '#F2CEA2', // light azure
+          dark: '#736555', // darker azure for hover
         },
         background: {
-          DEFAULT: '#F8FFE5', // light yellow
+          DEFAULT: '#F2EBDC', // light yellow
           off: '#fafafa', // off-white
           subtle: '#f5f5f5', // subtle off-white
         },

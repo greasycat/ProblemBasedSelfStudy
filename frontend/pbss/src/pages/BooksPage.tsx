@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { useBooks } from '../hooks/useBooks';
-import { BookForm } from '../components/BookForm';
 import { BookDetails } from '../components/BookDetails';
 import { Sidebar } from '../components/Sidebar';
 import { Chat } from '../components/Chat';
 import type { Book } from '../types/api';
 
 export function BooksPage() {
-  const { books, loading, error, removeBook, updateBook, loadAllBooks, setError } = useBooks();
+  const { books, loading, error, removeBook, updateBook, loadAllBooks, uploadBook, setError } = useBooks();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [bookToEdit, setBookToEdit] = useState<Book | undefined>();
+  const [bookToViewPdf, setBookToViewPdf] = useState<Book | null>(null);
 
   const handleSelectBook = (book: Book) => {
     setSelectedBook(book);
@@ -28,10 +28,15 @@ export function BooksPage() {
   };
 
   const handleDelete = async (book: Book) => {
-    if (window.confirm(`Are you sure you want to remove "${book.pdf_path}"?`)) {
-      removeBook(book.pdf_path);
-      if (selectedBook?.pdf_path === book.pdf_path) {
-        setSelectedBook(null);
+    if (window.confirm(`Are you sure you want to remove "${book.book_name || `Book ${book.book_id}`}"?`)) {
+      try {
+        await removeBook(book.book_id);
+        if (selectedBook?.book_id === book.book_id) {
+          setSelectedBook(null);
+        }
+      } catch (err) {
+        // Error is handled by the hook
+        console.error('Failed to delete book:', err);
       }
     }
   };
@@ -48,9 +53,9 @@ export function BooksPage() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen relative">
       {/* Sidebar */}
-      <div className="w-80 flex-shrink-0">
+      <div className="w-80 flex-shrink-0 relative z-10">
         <Sidebar
           books={books}
           loading={loading}
@@ -60,25 +65,19 @@ export function BooksPage() {
           onView={handleView}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onAddBook={() => setIsFormOpen(true)}
+          onViewPdf={(book) => setBookToViewPdf(book)}
+          onUploadBook={uploadBook}
           onDismissError={() => setError(null)}
           onLoadBooks={loadAllBooks}
         />
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <Chat selectedBook={selectedBook} />
+      <div className="flex-1 flex flex-col min-w-0 relative z-20">
+        <Chat selectedBook={selectedBook} bookToViewPdf={bookToViewPdf} onPdfViewClose={() => setBookToViewPdf(null)} />
       </div>
 
       {/* Modals */}
-      <BookForm
-        isOpen={isFormOpen}
-        onClose={handleFormClose}
-        onSubmit={handleFormSubmit}
-        initialBook={bookToEdit}
-      />
-
       <BookDetails
         isOpen={isDetailsOpen}
         onClose={() => {

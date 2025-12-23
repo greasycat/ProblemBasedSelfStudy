@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Book } from '../types/api';
 import { Button } from './Button';
 import { healthApi } from '../services/api';
-import { PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, TrashIcon, ArrowUpTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
   books: Book[];
@@ -13,7 +13,8 @@ interface SidebarProps {
   onView: (book: Book) => void;
   onEdit: (book: Book) => void;
   onDelete: (book: Book) => void;
-  onAddBook: () => void;
+  onViewPdf?: (book: Book) => void;
+  onUploadBook?: (file: File) => Promise<Book>;
   onDismissError: () => void;
   onLoadBooks?: () => void;
 }
@@ -26,7 +27,8 @@ export function Sidebar({
   onSelectBook,
   onEdit,
   onDelete,
-  onAddBook,
+  onViewPdf,
+  onUploadBook,
   onDismissError,
   onLoadBooks,
 }: SidebarProps) {
@@ -35,6 +37,8 @@ export function Sidebar({
     llm_initialized: boolean;
     context_initialized: boolean;
   } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Check backend health on mount
@@ -51,13 +55,63 @@ export function Sidebar({
     }
   }, [onLoadBooks]);
 
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Please select a PDF file');
+      return;
+    }
+
+    if (!onUploadBook) {
+      alert('Upload functionality is not available');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      await onUploadBook(file);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err) {
+      // Error is handled by the hook
+      console.error('Upload failed:', err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div className="flex flex-col h-full bg-lightYellow shadow-sm">
       {/* Sidebar Header */}
       <div className="px-4 pt-6 bg-background-off">
-        <div className="flex justify-end items-center h-full w-full">
-          <Button variant="primary" size="full" onClick={onAddBook} className="self-center">
-            + Add
+        <div className="flex flex-col gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            onChange={handleFileSelect}
+            className="hidden"
+            disabled={uploading || loading}
+          />
+          <Button 
+            variant="ghost" 
+            size="full" 
+            onClick={handleUploadClick} 
+            className="self-center justify-center"
+            disabled={uploading || loading || !onUploadBook}
+            isLoading={uploading}
+          >
+            <ArrowUpTrayIcon className="w-6 h-6 text-primary" />
+            <span className="font-bold text-primary">Upload PDF</span>
           </Button>
         </div>
         {error && (
@@ -86,18 +140,18 @@ export function Sidebar({
           <div>
             {books.map((book) => (
               <div
-                key={book.pdf_path}
+                key={book.book_id}
                 onClick={() => onSelectBook(book)}
               >
-                <div className={`bg-background-off rounded-lg p-4 transition-shadow ${
-                  selectedBook?.pdf_path === book.pdf_path
-                    ? 'bg-gray-200'
-                    : 'hover:opacity-80'
+                <div className={`bg-background-off rounded-lg p-4 transition-all duration-100 ${
+                  selectedBook?.book_id === book.book_id
+                    ? 'border-r-4 border-primary bg-background-subtle'
+                    : 'hover:bg-background-subtle hover:cursor-pointer'
                 }`}>
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-text-primary mb-1 truncate">
-                        {book.book_name || book.pdf_path.split('/').pop() || book.pdf_path}
+                        {book.book_name || `Unknown Book ${book.book_id}`}
                       </h3>
                       {book.book_author && (
                         <p className="text-sm text-text-secondary truncate opacity-60">
@@ -106,6 +160,18 @@ export function Sidebar({
                       )}
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
+                      {onViewPdf && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewPdf(book);
+                          }}
+                          className="p-1.5 text-text-secondary hover:text-primary transition-colors rounded hover:bg-background-subtle"
+                          aria-label="View PDF"
+                        >
+                          <DocumentTextIcon className="w-5 h-5" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
