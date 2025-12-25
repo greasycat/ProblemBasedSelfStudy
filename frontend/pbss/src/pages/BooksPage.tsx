@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useBooks } from '../hooks/useBooks';
 import { BookDetails } from '../components/BookDetails';
+import { BookEdit } from '../components/BookEdit';
+import { BookView } from '../components/BookView';
 import { Sidebar } from '../components/Sidebar';
 import { Chat } from '../components/Chat';
 import type { Book } from '../types/api';
@@ -12,6 +14,11 @@ export function BooksPage() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [bookToEdit, setBookToEdit] = useState<Book | undefined>();
   const [bookToViewPdf, setBookToViewPdf] = useState<Book | null>(null);
+  
+  // BookView state for visual alignment
+  const [isBookViewOpen, setIsBookViewOpen] = useState(false);
+  const [bookViewBook, setBookViewBook] = useState<Book | null>(null);
+  const [bookViewPage, setBookViewPage] = useState<number>(0);
 
   const handleSelectBook = (book: Book) => {
     setSelectedBook(book);
@@ -41,15 +48,28 @@ export function BooksPage() {
     }
   };
 
-  const handleFormSubmit = (book: Book) => {
+  const handleEditUpdate = (book: Book) => {
     updateBook(book);
+    // Don't close the modal here - let BookEdit handle it after showing success
+  };
+
+  const handleEditClose = () => {
     setIsFormOpen(false);
     setBookToEdit(undefined);
   };
 
-  const handleFormClose = () => {
-    setIsFormOpen(false);
-    setBookToEdit(undefined);
+  const handleVisualAlign = (book: Book) => {
+    // Open BookView with confirm popup for visual alignment
+    setBookViewBook(book);
+    // Start at page 0 or use alignment offset if it exists
+    setBookViewPage(book.alignment_offset || 0);
+    setIsBookViewOpen(true);
+  };
+
+  const handleVisualAlignConfirm = () => {
+    // Visual alignment logic will be implemented later
+    // For now, just close the view
+    console.log('Visual align confirmed for book:', bookViewBook?.book_id, 'at page:', bookViewPage);
   };
 
   return (
@@ -86,6 +106,30 @@ export function BooksPage() {
         book={selectedBook}
         onUpdate={updateBook}
       />
+      <BookEdit
+        isOpen={isFormOpen}
+        onClose={handleEditClose}
+        book={bookToEdit || null}
+        onUpdate={handleEditUpdate}
+        onVisualAlign={bookToEdit ? () => handleVisualAlign(bookToEdit) : undefined}
+      />
+      {bookViewBook && (
+        <BookView
+          isOpen={isBookViewOpen}
+          onClose={() => {
+            setIsBookViewOpen(false);
+            setBookViewBook(null);
+            setBookViewPage(0);
+          }}
+          bookId={bookViewBook.book_id}
+          currentPage={bookViewPage}
+          totalPages={bookViewBook.total_pages}
+          onPageChange={setBookViewPage}
+          showConfirmPopup={true}
+          confirmQuestion="Is this the correct page for alignment?"
+          onConfirm={handleVisualAlignConfirm}
+        />
+      )}
     </div>
   );
 }

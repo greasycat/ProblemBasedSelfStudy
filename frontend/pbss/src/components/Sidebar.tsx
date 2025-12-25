@@ -39,6 +39,15 @@ export function Sidebar({
   } | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingIntervalRef = useRef<number | null>(null);
+  const pollingBookIdRef = useRef<number | null>(null);
+
+  const capitalizeFirstLetterOfEachWord = (sentence: string) => {
+    return sentence
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
 
   useEffect(() => {
     // Check backend health on mount
@@ -53,7 +62,32 @@ export function Sidebar({
     if (onLoadBooks) {
       onLoadBooks();
     }
+
+    // Cleanup polling interval on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      pollingBookIdRef.current = null;
+    };
   }, [onLoadBooks]);
+
+  // Watch for uploaded book to get a name
+  useEffect(() => {
+    if (pollingBookIdRef.current && onLoadBooks) {
+      const book = books.find((b) => b.book_id === pollingBookIdRef.current);
+      if (book?.book_name) {
+        // Book name is now available, stop polling
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        pollingBookIdRef.current = null;
+        setUploading(false);
+      }
+    }
+  }, [books, onLoadBooks]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -72,15 +106,58 @@ export function Sidebar({
 
     setUploading(true);
     try {
-      await onUploadBook(file);
+      const uploadedBook = await onUploadBook(file);
+      const bookId = uploadedBook.book_id;
+
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+
+      // Start polling until book_name is available
+      if (onLoadBooks) {
+        // Clear any existing polling interval
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+        }
+
+        // Set the book ID we're waiting for
+        pollingBookIdRef.current = bookId;
+
+        // Initial load
+        await onLoadBooks();
+
+        // Start polling every 1 second
+        const maxAttempts = 60; // Maximum polling attempts (60 * 1s = 60 seconds)
+        let attempts = 0;
+
+        pollingIntervalRef.current = setInterval(() => {
+          attempts++;
+          if (attempts >= maxAttempts) {
+            // Max attempts reached, stop polling
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+            pollingBookIdRef.current = null;
+            setUploading(false);
+          } else {
+            // Continue polling
+            onLoadBooks();
+          }
+        }, 1000); // Poll every 1 second
+      } else {
+        setUploading(false);
+      }
     } catch (err) {
       // Error is handled by the hook
       console.error('Upload failed:', err);
-    } finally {
+      // Clean up polling state on error
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      pollingBookIdRef.current = null;
       setUploading(false);
     }
   };
@@ -151,11 +228,11 @@ export function Sidebar({
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-text-primary mb-1 truncate">
-                        {book.book_name || `Unknown Book ${book.book_id}`}
+                        {capitalizeFirstLetterOfEachWord(book.book_name || `Unknown Book ${book.book_id}`)}
                       </h3>
                       {book.book_author && (
                         <p className="text-sm text-text-secondary truncate opacity-60">
-                          {book.book_author}
+                          {capitalizeFirstLetterOfEachWord(book.book_author)}
                         </p>
                       )}
                     </div>

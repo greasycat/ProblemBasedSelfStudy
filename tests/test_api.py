@@ -13,9 +13,6 @@ os.environ.setdefault("LLM_GEMINI_KEY", "dummy_key_for_testing")
 
 from fastapi.testclient import TestClient
 
-# Import after setting env var
-from api import app
-
 
 class TestAPIEndpoints:
     """Test suite for API endpoints"""
@@ -55,13 +52,13 @@ class TestAPIEndpoints:
     def client(self, temp_db, temp_uploads_dir):
         """Create a test client with mocked dependencies"""
         # Setup context and LLM before creating client
-        from textbook.context import TextBookContext
+        from textbook.database import TextBookDatabase
         from textbook.model import LLM
-        import api
+        import api.app as api
         
         # Initialize context
-        api.context = TextBookContext(db_path=temp_db)
-        api.context.__enter__()
+        api.database = TextBookDatabase(db_path=temp_db)
+        api.database.__enter__()
         
         # Initialize LLM (will use dummy key from env)
         api.llm = LLM()
@@ -71,12 +68,12 @@ class TestAPIEndpoints:
         api.uploads_dir = temp_uploads_dir
         
         # Create client
-        client = TestClient(app)
+        client = TestClient(api.app)
         yield client
         
         # Cleanup
-        if api.context:
-            api.context.__exit__(None, None, None)
+        if api.database:
+            api.database.__exit__(None, None, None)
     
     def test_root(self, client):
         """Test GET / endpoint"""
@@ -99,11 +96,11 @@ class TestAPIEndpoints:
     def test_get_total_pages(self, client, test_pdf_path):
         """Test POST /total-pages endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -120,7 +117,7 @@ class TestAPIEndpoints:
         shutil.copy(test_pdf_path, upload_path)
         
         # Update book_file_name to match the upload path
-        with api.context.new_session() as session:
+        with api.database.new_session() as session:
             book = session.query(BookInfo).filter(BookInfo.book_id == book_id).first()
             assert book is not None
             book.book_file_name = os.path.basename(test_pdf_path)
@@ -137,11 +134,11 @@ class TestAPIEndpoints:
     def test_get_page_text(self, client, test_pdf_path):
         """Test POST /page-text endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -169,11 +166,11 @@ class TestAPIEndpoints:
     def test_get_page_image(self, client, test_pdf_path):
         """Test POST /page-image endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -202,11 +199,11 @@ class TestAPIEndpoints:
     def test_get_page_image_binary(self, client, test_pdf_path):
         """Test POST /page-image-binary endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -230,11 +227,11 @@ class TestAPIEndpoints:
     def test_update_book_info(self, client, test_pdf_path):
         """Test POST /update-book-info endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -262,11 +259,11 @@ class TestAPIEndpoints:
     def test_check_toc_exists(self, client, test_pdf_path):
         """Test GET /check-toc-exists endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -293,11 +290,11 @@ class TestAPIEndpoints:
     def test_update_toc(self, client, test_pdf_path):
         """Test POST /update-toc endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -324,11 +321,11 @@ class TestAPIEndpoints:
     def test_update_alignment_offset(self, client, test_pdf_path):
         """Test POST /update-alignment-offset endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -356,11 +353,11 @@ class TestAPIEndpoints:
     def test_check_alignment_offset(self, client, test_pdf_path):
         """Test POST /check-alignment-offset endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -396,11 +393,11 @@ class TestAPIEndpoints:
     def test_get_chapters(self, client, test_pdf_path):
         """Test GET /chapters endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -445,11 +442,11 @@ class TestAPIEndpoints:
     def test_delete_book(self, client, test_pdf_path):
         """Test DELETE /delete-book endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -477,11 +474,11 @@ class TestAPIEndpoints:
     def test_create_section(self, client):
         """Test POST /sections endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -510,11 +507,11 @@ class TestAPIEndpoints:
     def test_get_sections(self, client):
         """Test GET /sections endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo, SectionInfo
-        import api
+        from textbook.database import BookInfo, SectionInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -555,11 +552,11 @@ class TestAPIEndpoints:
     def test_get_section_by_id(self, client):
         """Test GET /sections/{section_id} endpoint"""
         # First, create a book and section entry
-        from textbook.context import BookInfo, SectionInfo
-        import api
+        from textbook.database import BookInfo, SectionInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -594,11 +591,11 @@ class TestAPIEndpoints:
     def test_update_section(self, client):
         """Test PUT /sections/{section_id} endpoint"""
         # First, create a book and section entry
-        from textbook.context import BookInfo, SectionInfo
-        import api
+        from textbook.database import BookInfo, SectionInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -636,11 +633,11 @@ class TestAPIEndpoints:
     def test_delete_section(self, client):
         """Test DELETE /sections/{section_id} endpoint"""
         # First, create a book and section entry
-        from textbook.context import BookInfo, SectionInfo
-        import api
+        from textbook.database import BookInfo, SectionInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -673,11 +670,11 @@ class TestAPIEndpoints:
     def test_create_page(self, client):
         """Test POST /pages endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo
-        import api
+        from textbook.database import BookInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -703,11 +700,11 @@ class TestAPIEndpoints:
     def test_get_pages(self, client):
         """Test GET /pages endpoint"""
         # First, create a book entry
-        from textbook.context import BookInfo, PageInfo
-        import api
+        from textbook.database import BookInfo, PageInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -740,11 +737,11 @@ class TestAPIEndpoints:
     def test_get_page_by_id(self, client):
         """Test GET /pages/{page_id} endpoint"""
         # First, create a book and page entry
-        from textbook.context import BookInfo, PageInfo
-        import api
+        from textbook.database import BookInfo, PageInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -776,11 +773,11 @@ class TestAPIEndpoints:
     def test_update_page(self, client):
         """Test PUT /pages/{page_id} endpoint"""
         # First, create a book and page entry
-        from textbook.context import BookInfo, PageInfo
-        import api
+        from textbook.database import BookInfo, PageInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",
@@ -815,11 +812,11 @@ class TestAPIEndpoints:
     def test_delete_page(self, client):
         """Test DELETE /pages/{page_id} endpoint"""
         # First, create a book and page entry
-        from textbook.context import BookInfo, PageInfo
-        import api
+        from textbook.database import BookInfo, PageInfo
+        import api.app as api
         
-        assert api.context is not None
-        with api.context.new_session() as session:
+        assert api.database is not None
+        with api.database.new_session() as session:
             book = BookInfo(
                 book_name="Test Book",
                 book_author="Test Author",

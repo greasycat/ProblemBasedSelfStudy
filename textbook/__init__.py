@@ -1,5 +1,5 @@
-from .context import TextBookContext
+from .database import TextBookDatabase
 from .reader import LazyTextbookReader
 from .model import LLM
 
-__all__ = ["TextBookContext", "LazyTextbookReader", "LLM"]
+__all__ = ["TextBookDatabase", "LazyTextbookReader", "LLM"]

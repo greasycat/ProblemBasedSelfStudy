@@ -8,9 +8,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses = {
-  primary: 'bg-primary text-white hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-lg shadow-primary/20',
-  secondary: 'bg-primary-light text-white hover:bg-primary hover:-translate-y-0.5 hover:shadow-lg shadow-primary/20',
-  danger: 'bg-error text-white hover:bg-red-600 hover:-translate-y-0.5 hover:shadow-lg shadow-error/20',
+  primary: 'bg-primary text-white hover:bg-primary-dark hover:shadow-lg shadow-primary/20',
+  secondary: 'bg-primary-light text-white hover:bg-primary hover:shadow-lg shadow-primary/20',
+  danger: 'bg-error text-white hover:bg-red-600 hover:shadow-lg shadow-error/20',
   ghost: 'bg-transparent text-text-primary hover:bg-background-subtle',
 };
 
@@ -43,8 +43,8 @@ export function Button({
     >
       {isLoading ? (
         <>
-          <span className="invisible">{children}</span>
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span className="inline-block w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <span className="text-primary font-bold"> Uploading... </span>
         </>
       ) : (
         children

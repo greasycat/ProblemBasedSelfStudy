@@ -161,6 +161,7 @@ export function TableOfContents({
       })
       .on('click', function(_, d) {
         handleTocItemClick(d);
+        d3.selectAll('.toc-tooltip').remove();
       });
 
     // Helper function to wrap text into multiple lines

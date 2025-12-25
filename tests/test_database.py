@@ -7,8 +7,8 @@ os.environ.setdefault("LLM_GEMINI_KEY", "dummy_key_for_testing")
 
 import pytest
 import tempfile
-from textbook.context import (
-    TextBookContext,
+from textbook.database import (
+    TextBookDatabase,
     BookInfo,
     ChapterInfo,
     SectionInfo,
@@ -18,8 +18,8 @@ from textbook.context import (
 )
 
 
-class TestTextBookContext:
-    """Test suite for TextBookContext class"""
+class TestTextBookDatabase:
+    """Test suite for TextBookDatabase class"""
     
     @pytest.fixture
     def temp_db(self):
@@ -32,48 +32,48 @@ class TestTextBookContext:
             os.unlink(db_path)
     
     @pytest.fixture
-    def context(self, temp_db):
-        """Create a TextBookContext instance with temporary database"""
-        ctx = TextBookContext(db_path=temp_db)
-        yield ctx
-        ctx.close()
+    def database(self, temp_db):
+        """Create a TextBookDatabase instance with temporary database"""
+        database = TextBookDatabase(db_path=temp_db)
+        yield database
+        database.close()
     
     def test_init_default_path(self):
         """Test initialization with default database path"""
-        ctx = TextBookContext()
-        assert ctx.db_path == "textbook_context.db"
-        assert ctx.db_type == "sqlite"
-        assert ctx.engine is not None
-        ctx.close()
+        database = TextBookDatabase()
+        assert database.db_path == "textbook_context.db"
+        assert database.db_type == "sqlite"
+        assert database.engine is not None
+        database.close()
         # Cleanup
         if os.path.exists("textbook_context.db"):
             os.unlink("textbook_context.db")
     
     def test_init_custom_path(self, temp_db):
         """Test initialization with custom database path"""
-        ctx = TextBookContext(db_path=temp_db)
-        assert ctx.db_path == temp_db
-        assert ctx.engine is not None
-        ctx.close()
+        database = TextBookDatabase(db_path=temp_db)
+        assert database.db_path == temp_db
+        assert database.engine is not None
+        database.close()
     
     def test_init_custom_directory(self):
         """Test initialization with custom directory path"""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "subdir", "test.db")
-            ctx = TextBookContext(db_path=db_path)
+            database = TextBookDatabase(db_path=db_path)
             assert os.path.exists(db_path)
-            assert ctx.engine is not None
-            ctx.close()
+            assert database.engine is not None
+            database.close()
     
     def test_init_invalid_db_type(self):
         """Test initialization with invalid database type"""
         with pytest.raises(ValueError, match="Unsupported database type"):
-            TextBookContext(db_type="invalid")
+            TextBookDatabase(db_type="invalid")
     
     def test_init_postgresql_not_implemented(self):
         """Test that PostgreSQL raises NotImplementedError"""
         with pytest.raises(NotImplementedError, match="PostgreSQL support"):
-            TextBookContext(db_type="postgresql")
+            TextBookDatabase(db_type="postgresql")
     
     def test_tables_created(self, context):
         """Test that all tables are created"""
@@ -91,12 +91,12 @@ class TestTextBookContext:
     
     def test_context_manager(self, temp_db):
         """Test context manager functionality"""
-        with TextBookContext(db_path=temp_db) as ctx:
-            assert ctx.engine is not None
-            assert ctx.session is not None
+        with TextBookDatabase(db_path=temp_db) as database:
+            assert database.engine is not None
+            assert database.session is not None
         
         # Session should be closed after context exit
-        assert ctx._session is None
+        assert database._session is None
     
     def test_close(self, context):
         """Test closing the database connection"""

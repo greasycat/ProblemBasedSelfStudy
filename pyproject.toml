@@ -21,6 +21,7 @@ dependencies = [
     "fastapi>=0.127.0",
     "uvicorn>=0.40.0",
     "python-multipart>=0.0.21",
+    "structlog>=25.5.0",
 ]
 
 [tool.uv.sources]

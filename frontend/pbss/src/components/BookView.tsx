@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { bookApi } from '../services/api';
 
 interface BookViewProps {
   isOpen: boolean;
@@ -9,6 +10,10 @@ interface BookViewProps {
   currentPage: number;
   totalPages?: number;
   onPageChange: (page: number) => void;
+  // Optional confirm popup props
+  showConfirmPopup?: boolean;
+  confirmQuestion?: string;
+  onConfirm?: () => void;
   // alignmentOffset?: number;
 }
 
@@ -19,18 +24,30 @@ export function BookView({
   currentPage,
   totalPages,
   onPageChange,
+  showConfirmPopup = false,
+  confirmQuestion = 'Is this the correct page?',
+  onConfirm,
   // alignmentOffset = 0,
 }: BookViewProps) {
+  const [isConfirmPopupVisible, setIsConfirmPopupVisible] = useState(showConfirmPopup);
+  const [canGoPrevious, setCanGoPrevious] = useState(false);
+  const [canGoNext, setCanGoNext] = useState(true);
+  const [checkingPages, setCheckingPages] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      // Reset confirm popup visibility when BookView opens
+      if (showConfirmPopup) {
+        setIsConfirmPopupVisible(true);
+      }
     } else {
       document.body.style.overflow = '';
     }
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isOpen]);
+  }, [isOpen, showConfirmPopup]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -44,13 +61,43 @@ export function BookView({
     }
   }, [isOpen, onClose]);
 
+  // Check if pages exist by calling the API
+  useEffect(() => {
+    if (!isOpen || !bookId) return;
+
+    const checkPageExists = async (pageNumber: number): Promise<boolean> => {
+      try {
+        await bookApi.getPageImage({ book_id: bookId, page_number: pageNumber, dpi: 150 });
+        return true;
+      } catch (error) {
+        return false;
+      }
+    };
+
+    const checkNavigationAvailability = async () => {
+      setCheckingPages(true);
+      
+      // Check previous page
+      const prevPageExists = currentPage > 0 ? await checkPageExists(currentPage - 1) : false;
+      setCanGoPrevious(prevPageExists);
+      
+      // Check next page
+      const nextPageExists = await checkPageExists(currentPage + 1);
+      setCanGoNext(nextPageExists);
+      
+      setCheckingPages(false);
+    };
+
+    checkNavigationAvailability();
+  }, [isOpen, bookId, currentPage]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen || e.key === 'Escape') return;
-      if (e.key === 'ArrowLeft' && currentPage > 0) {
+      if (!isOpen || e.key === 'Escape' || checkingPages) return;
+      if (e.key === 'ArrowLeft' && canGoPrevious) {
         e.preventDefault();
         onPageChange(currentPage - 1);
-      } else if (e.key === 'ArrowRight' && (totalPages === undefined || currentPage < totalPages - 1)) {
+      } else if (e.key === 'ArrowRight' && canGoNext) {
         e.preventDefault();
         onPageChange(currentPage + 1);
       }
@@ -59,18 +106,30 @@ export function BookView({
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, currentPage, totalPages, onPageChange]);
+  }, [isOpen, currentPage, canGoPrevious, canGoNext, onPageChange, checkingPages]);
 
   const handlePreviousPage = () => {
-    if (currentPage > 0) {
+    if (canGoPrevious) {
       onPageChange(currentPage - 1);
     }
   };
 
   const handleNextPage = () => {
-    if (totalPages === undefined || currentPage < totalPages - 1) {
+    if (canGoNext) {
       onPageChange(currentPage + 1);
     }
+  };
+
+  const handlePrevious5Pages = () => {
+    const newPage = Math.max(0, currentPage - 5);
+    if (newPage !== currentPage) {
+      onPageChange(newPage);
+    }
+  };
+
+  const handleNext5Pages = () => {
+    // Try to go forward 5 pages - will be checked by API on page change
+    onPageChange(currentPage + 5);
   };
 
   if (!isOpen) return null;
@@ -82,11 +141,13 @@ export function BookView({
   const displayPageNumber = currentPage; // currentPage already includes alignment offset for display
   const imageUrl = `${API_BASE_URL}/page-image-binary?book_id=${bookId}&page_number=${apiPageNumber}`;
 
-  // Navigation bounds: currentPage should be >= alignmentOffset and <= (totalPages - 1 + alignmentOffset)
-  const minPage = 0;
-  const maxPage = totalPages !== undefined ? (totalPages - 1) : undefined;
-  const canGoPrevious = currentPage > minPage;
-  const canGoNext = maxPage === undefined || currentPage < maxPage;
+  const handleConfirm = () => {
+    setIsConfirmPopupVisible(false);
+    if (onConfirm) {
+      onConfirm();
+    }
+    onClose();
+  };
 
   return (
     <div 
@@ -98,6 +159,22 @@ export function BookView({
         className="relative bg-white rounded-xl max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Confirm Popup */}
+        {isConfirmPopupVisible && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-lg shadow-2xl border-2 border-primary p-4 min-w-[300px]">
+            <div className="flex flex-col gap-3">
+              <p className="text-text-primary font-medium text-base m-0">
+                {confirmQuestion}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="primary" size="small" onClick={handleConfirm}>
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Close Button */}
         <div className="absolute top-2 right-2 z-10">
           <Button variant="ghost" size="small" onClick={onClose}>
@@ -113,9 +190,9 @@ export function BookView({
               e.stopPropagation();
               handlePreviousPage();
             }}
-            disabled={!canGoPrevious}
+            disabled={!canGoPrevious || checkingPages}
             className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-white/90 hover:bg-white shadow-lg transition-all ${
-              canGoPrevious ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+              canGoPrevious && !checkingPages ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
             }`}
             aria-label="Previous page"
           >
@@ -135,13 +212,43 @@ export function BookView({
               e.stopPropagation();
               handleNextPage();
             }}
-            disabled={!canGoNext}
+            disabled={!canGoNext || checkingPages}
             className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-white/90 hover:bg-white shadow-lg transition-all ${
-              canGoNext ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+              canGoNext && !checkingPages ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
             }`}
             aria-label="Next page"
           >
             <ChevronRightIcon className="w-6 h-6 text-gray-800" />
+          </button>
+
+          {/* -5 Pages Navigation Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrevious5Pages();
+            }}
+            disabled={!canGoPrevious || checkingPages}
+            className={`absolute left-4 top-[calc(50%+60px)] -translate-y-1/2 z-10 p-2 rounded-full bg-white/90 hover:bg-white shadow-lg transition-all text-sm font-medium ${
+              canGoPrevious && !checkingPages ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+            }`}
+            aria-label="Previous 5 pages"
+          >
+            -5
+          </button>
+
+          {/* +5 Pages Navigation Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNext5Pages();
+            }}
+            disabled={!canGoNext || checkingPages}
+            className={`absolute right-4 top-[calc(50%+60px)] -translate-y-1/2 z-10 p-2 rounded-full bg-white/90 hover:bg-white shadow-lg transition-all text-sm font-medium ${
+              canGoNext && !checkingPages ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+            }`}
+            aria-label="Next 5 pages"
+          >
+            +5
           </button>
         </div>
 

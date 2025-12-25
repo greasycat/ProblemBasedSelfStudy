@@ -50,7 +50,7 @@ export function DivisionInformation({ item, viewMode }: DivisionInformationProps
               {viewMode} Details
             </h4>
             <h3 className="text-lg font-bold text-text-primary">
-              {item.title}
+              {item.book_index_string ?? ''} {item.title}
             </h3>
           </div>
 
@@ -83,12 +83,12 @@ export function DivisionInformation({ item, viewMode }: DivisionInformationProps
             </div>
           )} */}
 
-          {item.type === 'chapter' && item.chapter_id && (
+          {/* {item.type === 'chapter' && item.chapter_id && (
             <div>
               <span className="text-gray-600 font-medium">Chapter ID:</span>
               <span className="ml-2 text-text-primary">{item.chapter_id}</span>
             </div>
-          )}
+          )} */}
 
             <div className="col-span-2 mt-2">
               <span className="text-gray-600 font-medium block mb-1">Summary:</span>

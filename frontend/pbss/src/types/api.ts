@@ -29,6 +29,14 @@ export interface UpdateAlignmentOffsetRequest {
   page_number: number;
 }
 
+export interface UpdateBookFieldsRequest {
+  book_id: number;
+  book_name?: string;
+  book_author?: string;
+  book_keywords?: string;
+  alignment_offset?: number;
+}
+
 export interface TotalPagesResponse {
   book_id: number;
   total_pages: number;

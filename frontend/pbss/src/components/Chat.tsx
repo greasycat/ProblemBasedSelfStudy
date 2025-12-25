@@ -274,6 +274,7 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
         <div className="px-6 py-2 justify-center items-center flex gap-2">
           <Button
             variant="primary"
+            className="shadow-lg"
             onClick={() => {
               if (selectedItem?.start_page_number !== undefined) {
                 setCurrentPngPage(selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
@@ -281,7 +282,7 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
               setIsPngModalOpen(true);
             }}
           >
-            View PNG
+          View
           </Button>
         </div>
       )}

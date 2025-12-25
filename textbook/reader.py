@@ -3,21 +3,57 @@ from pathlib import Path
 import io
 import tempfile
 import json
-import readchar
 from typing import Optional, List
 
 from PIL import Image
 import pymupdf
 
 from pydantic import BaseModel
+import structlog
 
-from textbook.context import TextBookContext, BookInfo, ChapterInfo
+from textbook.database import TextBookDatabase, BookInfo, ChapterInfo
 from textbook.model import LLM
 from textbook.mineru import MinerURequest
 from textbook.utils import detect_toc
 
 MAX_PAGE_FOR_TOC_DETECTION = 15 # Number of pages to read for TOC detection
 MAX_PAGE_FOR_ALIGNMENT_CHECK = 25 # Number of pages to read for alignment check in worst case, this is longer than the TOC detection because we may need to check both TOC and prefaces if TOC end is not set
+MIN_PAGE_CONTENT_LENGTH = 20 # Minimum length of page content to be considered valid
+
+def cover_prompt(cover: str) -> str:
+    return f"""
+    Extract 
+    1. book title (lower case all letters)
+    2. author information (lower case all letters)
+    3. keywords to best describe the book content, do not include edition or publisher or license information in keywords
+    
+    from the following text of the book cover:
+    {cover}
+    """
+
+def toc_prompt(toc: str) -> str:
+    return f"""
+    Extract 
+    1. The table of contents from the following text (lower case all letters)
+    2. Treat bibliography and indexes as two separate chapters: 
+    
+    from the following text:
+    {toc}
+    """
+
+def page_summary_prompt(page: str, related_chapters: List[str], related_sections: List[str]) -> str:
+    return f"""
+    Extract the summary of the following page text with rules:
+    - use bullet points to summarize the page content, identify any key definitions or remarks, assume all the points will be used for an advance exam
+    - if it contain more than one exercises, mark this page as containing exercise,
+    - do not summarize the exercises, just mark this page as containing exercise
+    - if it the page contain more than one chapter or section, summarize the chapter or section separately
+    - all title should be not contain any symbols
+    - all title should be in lower case
+
+    Page: 
+     {page}
+    """
 
 # Pydantic model for TOC
 class SectionSchema(BaseModel):
@@ -39,15 +75,24 @@ class BookSchema(BaseModel):
     book_author: str
     book_keywords: str
 
-class PageSchema(BaseModel):
-    page_summary: str
-    does_contain_exercise: bool
+class PageSummarySchema(BaseModel):
+    title: str
+    summary: str
 
+class PageSchema(BaseModel):
+    page_summary: List[PageSummarySchema]
+    has_exercises: bool
+
+    def full_summary(self) -> str:
+        return "\n".join([f"{summary.title}: {summary.summary}" for summary in self.page_summary])
 
 
 class LazyTextbookReader:
     
-    def __init__(self, pdf_path: Path, llm: LLM, context: TextBookContext, force_text_only_extraction: bool = False):
+    def __init__(self, pdf_path: Path, llm: LLM, database: TextBookDatabase, force_text_only_extraction: bool = False):
+
+        self.logger = structlog.get_logger(__name__)
+
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
         
@@ -58,7 +103,7 @@ class LazyTextbookReader:
 
         self.pdf_document: Optional[pymupdf.Document] = None
         
-        self.context: TextBookContext = context
+        self.database: TextBookDatabase = database
 
         self.force_text_only_extraction = force_text_only_extraction
 
@@ -66,13 +111,21 @@ class LazyTextbookReader:
         self.book_info: Optional[BookInfo] = None
 
     def __enter__(self):
+        if not os.path.exists(self.pdf_path):
+            raise FileNotFoundError(f"PDF file not found: {self.pdf_path}")
+        else:
+            self.logger.info(f"PDF file found: {self.pdf_path}")
+
         self.pdf_document = pymupdf.open(self.pdf_path)
-        self.check_if_book_exists_and_load()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.pdf_document:
             self.pdf_document.close()
+
+    # ------------------------------------------------------------
+    # PDF related functions
+    # ------------------------------------------------------------
     
     def get_total_pages(self) -> int:
         if not self.pdf_document:
@@ -141,35 +194,46 @@ class LazyTextbookReader:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
     
-    def get_page_content(self, page_number: int) -> str:
-        if not self.force_text_only_extraction:
+    def get_page_content(self, page_number: int, apply_alignment_offset: bool = False) -> str:
+        if apply_alignment_offset and self.book_info is not None and self.book_info.book_alignment_offset is not None:
+            page_number = page_number + self.book_info.book_alignment_offset
+
+        extracted_text = self.get_page_as_text(page_number).strip()
+
+        if len(extracted_text) < MIN_PAGE_CONTENT_LENGTH and not self.force_text_only_extraction:
+            self.logger.warning(f"Page {page_number} content is too short, try to extract from image")
             return self.get_page_as_text_from_image(page_number)
         else:
-            return self.get_page_as_text(page_number)
+            return extracted_text
         
+    # ------------------------------------------------------------
+    # Book related functions
+    # ------------------------------------------------------------
+
     def check_if_book_exists_and_load(self) -> bool:
-        book = self.context.get_book_by_file_name(self.pdf_name)
+        book = self.database.get_book_by_file_name(self.pdf_name)
         if book is not None:
             self.book_info = book
             return True
+        self.logger.warning(f"Book {self.pdf_name} not found in database")
         return False
     
-    def update_book_info(self, overwrite: bool = False) -> None:
-        if not overwrite and self.book_info is not None:
-            print(f"Book {self.pdf_name} already exists, skipping extraction, if you want to overwrite, set overwrite to True")
-            return
-
+    def update_book_info(self):
+        self.logger.debug(f"Updating book info for {self.pdf_name}")
         cover = self.get_page_content(0) # Get the first page of the book
-        response = self.llm.text_model.prompt(f"Extract the book information from the following text: {cover}, use keywords to best summarize the book, do not include edition information in keywords", schema=BookSchema)
+        book_basic_info = self.llm.prompt_with_schema(cover_prompt(cover), schema=BookSchema)
         # deserialize the response to a BookBasicInfo object
-        book_basic_info = BookSchema.model_validate_json(response.text())
-        book_info = self.context.create_book(book_basic_info.book_name, book_basic_info.book_author, book_basic_info.book_keywords, self.pdf_name)
+        book_info = self.database.create_book(book_basic_info.book_name, book_basic_info.book_author, book_basic_info.book_keywords, self.pdf_name)
         self.book_info = book_info
+
+    # ------------------------------------------------------------
+    # TOC related functions
+    # ------------------------------------------------------------
 
     def check_if_toc_exists(self) -> bool:
         if self.book_info is None:
             return False
-        with self.context.new_session() as session:
+        with self.database.new_session() as session:
             toc = session.query(ChapterInfo).filter(ChapterInfo.book_id == self.book_info.book_id).all()
             return len(toc) > 0
         
@@ -200,15 +264,15 @@ class LazyTextbookReader:
                 toc_end_page = page_num
                 break
 
-        self.context.update_book_toc_end_page(self.book_info.book_id, toc_end_page)
+        self.database.update_book_toc_end_page(self.book_info.book_id, toc_end_page)
         
-        toc = self.llm.text_model.prompt(f"Extract the table of contents from the following text, treat bibliography and indexes as two separate chapters: {toc}", schema=TocSchema)
+        toc = self.llm.prompt_with_schema(toc_prompt(toc), schema=TocSchema)
 
         if caching:
             with open("toc.json", "w") as f:
-                f.write(toc.text())
+                f.write(toc.model_dump_json())
 
-        self.save_toc(json.loads(toc.text()))
+        self.save_toc(toc.model_dump())
     
     @staticmethod
     def generate_block_with_range(block_list, end_page_number: int):
@@ -230,7 +294,7 @@ class LazyTextbookReader:
             raise ValueError("Book basic information not extracted, please extract it first")
 
         for chapter, start_page_number, end_page_number in self.generate_block_with_range(toc["chapters"], self.get_total_pages()-1):
-            chapter_id = self.context.get_or_create_chapter(
+            chapter_id = self.database.try_create_chapter_info(
                 self.book_info.book_id,
                 title=chapter["title"],
                 index_string=chapter["index_string"],
@@ -242,7 +306,7 @@ class LazyTextbookReader:
                 continue
                 
             for section, start_page_number, end_page_number in self.generate_block_with_range(chapter["sections"], end_page_number+1): # +1 because the end page number from the parent chapter is inclusive
-                section_id = self.context.get_or_create_section(
+                section_id = self.database.try_create_section_info(
                     self.book_info.book_id,
                     chapter_id,
                     title=section["title"],
@@ -254,72 +318,36 @@ class LazyTextbookReader:
                 if section_id is None:
                     continue
 
+    # ------------------------------------------------------------
+    # Alignment related functions
+    # ------------------------------------------------------------
+
     def update_alignment_offset(self, page_number: int):
         if self.book_info is None or self.book_info.book_id is None:
             raise ValueError("Book basic information not extracted, please extract it first")
         
-        self.context.update_book_alignment_offset(self.book_info.book_id, page_number)
+        self.database.update_book_alignment_offset(self.book_info.book_id, page_number)
         self.book_info.book_alignment_offset = page_number
     
-    def interactive_alignment_offset(self):
-        if self.book_info is None or self.book_info.book_id is None:
-            raise ValueError("Book basic information not extracted, please extract it first")
-
-        chapters = self.context.get_chapters_by_book_id(self.book_info.book_id)
-        if len(chapters) < 0:
-            raise ValueError("No chapters found, please update the TOC first")
-
-        first_chapter_page_number = chapters[0].start_page_number
-
-        toc_end_page = self.context.get_book_toc_end_page(self.book_info.book_id, default_value=0)
-        page_number = toc_end_page+1
-        while page_number < self.get_total_pages():
-            page_text = self.get_page_content(page_number)
-            print("="*40)
-            print(page_text)
-            print("="*40)
-            print("Is this the first chapter? (y/j/k): ")
-            key = readchar.readkey()
-            if key == 'y':
-                print("Press enter to confirm, other key to cancel")
-                offset = page_number - first_chapter_page_number
-                print(f"Alignment offset: {offset}")
-                self.update_alignment_offset(offset)
-                break
-            elif key == 'j':
-                if page_number == self.get_total_pages()-1:
-                    print("You are at the last page, cannot go forward")
-                    continue
-                page_number += 1
-            elif key == 'k':
-                if page_number == 1:
-                    print("You are at the first page, cannot go back")
-                    continue
-                page_number -= 1
-        
-        # get chapter 2 page number
-        if len(chapters) < 2:
-            print("Not enough chapters to check alignment, skipping alignment check")
-            return
 
     def check_alignment_offset(self) -> List[str]:
         if self.book_info is None or self.book_info.book_id is None:
             return []
 
-        chapters = self.context.get_chapters_by_book_id(self.book_info.book_id)
+        chapters = self.database.get_chapters_by_book_id(self.book_info.book_id)
         if len(chapters) < 2:
             print("Not enough chapters to check alignment, skipping alignment check")
             return []
 
         results = []
 
-        offset = self.context.get_book_alignment_offset(self.book_info.book_id, default_value=0)
+        offset = self.database.get_book_alignment_offset(self.book_info.book_id, default_value=0)
         chapter_2_page_number = chapters[1].start_page_number
         page_text = self.get_page_content(chapter_2_page_number + offset)
 
         results.append(page_text)
 
-        sections = self.context.get_sections_by_book_id(self.book_info.book_id)
+        sections = self.database.get_sections_by_book_id(self.book_info.book_id)
         if len(sections) < 1:
             return results
 
@@ -328,3 +356,24 @@ class LazyTextbookReader:
         results.append(section_1_text)
 
         return results
+    
+    # ------------------------------------------------------------
+    # Page related functions
+    # ------------------------------------------------------------
+
+    def create_or_update_page_info(self, page_number: int):
+        if self.book_info is None or self.book_info.book_id is None:
+            raise ValueError("Book basic information not extracted, please extract it first")
+
+        # get the related chapters and sections
+        related_chapters = [chapter.title for chapter in self.database.get_chapters_by_book_id_and_page_range(self.book_info.book_id, page_number, page_number)]
+        related_sections = [section.title for section in self.database.get_sections_by_book_id_and_page_range(self.book_info.book_id, page_number, page_number)]
+        
+        page_text = self.get_page_content(page_number)
+        page_summary = self.llm.prompt_with_schema(page_summary_prompt(page_text, related_chapters, related_sections), schema=PageSchema)
+
+        page_id = self.database.try_create_page_info(self.book_info.book_id, page_number, page_summary.full_summary())
+
+        return page_id
+
+

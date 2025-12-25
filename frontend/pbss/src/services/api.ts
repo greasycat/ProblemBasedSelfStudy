@@ -7,6 +7,7 @@ import type {
   UpdateBookInfoRequest,
   UpdateTocRequest,
   UpdateAlignmentOffsetRequest,
+  UpdateBookFieldsRequest,
   TotalPagesResponse,
   PageTextResponse,
   PageImageResponse,
@@ -265,6 +266,14 @@ export const bookApi = {
     const params = new URLSearchParams({ book_id: book_id.toString() });
     return fetchAPI<DeleteBookResponse>(`/delete-book?${params.toString()}`, {
       method: 'DELETE',
+    });
+  },
+
+  // Update book fields directly (title, author, keywords, alignment offset)
+  updateBookFields: async (request: UpdateBookFieldsRequest): Promise<BookInfoResponse> => {
+    return fetchAPI<BookInfoResponse>(`/books/${request.book_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(request),
     });
   },
 };

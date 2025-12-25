@@ -4,13 +4,13 @@
 # book_info: table of book information, a table with columns: book_id (auto-increment), book_name (str), book_author (str),  book_pages (int), book_keywords (str), book_summary (str), book_embedding (BLOB),
 # chapter_info: table of chapter summaries, a table with columns: chapter_id (auto-increment), start_page_number (int), end_page_number, summary, book_id, book_index_string (str)
 # section_info: table of sections, a table with columns: section_id (auto-increment), start_page_number (int), end_page_number (int), summary, chapter_id, book_id, book_index_string (str)
-# page_info: table of page summaries, a table with columns: page_id (auto-increment), page_number (not auto-increment), summary, embedding (BLOB), related_chapters (BLOB), related_section_id (BLOB), book_id
-# exercise_info: table of exercise information, a table with columns: exercise_id (not auto-increment), exercise_description, page_number (int), related_chapters (BLOB), related_section_id (BLOB), embedding (BLOB), book_id
+# page_info: table of page summaries, a table with columns: page_id (auto-increment), page_number (not auto-increment), summary, embedding (BLOB), related_chapters (BLOB), related_sections (BLOB), book_id
+# exercise_info: table of exercise information, a table with columns: exercise_id (not auto-increment), exercise_description, page_number (int), related_chapters (BLOB), related_sections (BLOB), embedding (BLOB), book_id
 # exercise_details: table of exercise details, a table with columns: exercise_id (not auto-increment), study_guide (str), estimated_time_to_complete (int), difficulty_level (int), chapter_id, section_id, book_id 
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import (
     create_engine,
     String,
@@ -73,6 +73,12 @@ class BookInfo(Base):
         back_populates="book",
         cascade="all, delete-orphan"
     )
+
+    def __repr__(self) -> str:
+        return f"BookInfo(book_id={self.book_id}, book_name={self.book_name}, book_author={self.book_author}, book_pages={self.book_pages}, book_keywords={self.book_keywords}, book_summary={self.book_summary}, book_embedding={self.book_embedding}, book_file_name={self.book_file_name}, book_toc_end_page={self.book_toc_end_page}, book_alignment_offset={self.book_alignment_offset})"
+    
+    def __str__(self) -> str:
+        return self.__repr__()
 
 
 class ChapterInfo(Base):
@@ -182,7 +188,7 @@ class PageInfo(Base):
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     related_chapters: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
-    related_section_id: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    related_sections: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     book_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("book_info.book_id", ondelete="CASCADE"),
@@ -223,7 +229,7 @@ class ExerciseInfo(Base):
         nullable=True,
     )
     related_chapters: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
-    related_section_id: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    related_sections: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     book_id: Mapped[int] = mapped_column(
         Integer,
@@ -303,7 +309,7 @@ class ExerciseDetails(Base):
     )
 
 
-class TextBookContext:
+class TextBookDatabase:
     """Context manager for textbook database operations"""
     
     def __init__(
@@ -379,7 +385,19 @@ class TextBookContext:
         """Compatibility property for backward compatibility with raw SQLite connection"""
         # Return None to indicate SQLAlchemy is being used instead of raw connection
         return None
+
     
+
+    
+    # ------------------------------------------------------------
+    # Book related functions
+    # ------------------------------------------------------------
+
+    def get_all_books(self) -> list[BookInfo]:
+        """Get all books from the database"""
+        with self.new_session() as session:
+            return _query_all_books(session)
+
     def get_book_by_file_name(self, book_file_name: str) -> Optional[BookInfo]:
         with self.new_session() as session:
             return _query_book_by_file_name(session, book_file_name)
@@ -415,7 +433,21 @@ class TextBookContext:
             session.query(BookInfo).filter(BookInfo.book_id == book_id).update({BookInfo.book_alignment_offset: alignment_offset})
             session.commit()
         
-    def get_or_create_chapter(self, book_id: int, title: str, index_string: str, start_page: int, end_page: int) -> Optional[int]:
+    def delete_book_by_file_name(self, book_file_name: str) -> bool:
+        with self.new_session() as session:
+            book = _query_book_by_file_name(session, book_file_name)
+            if book is None:
+                return False
+            
+            session.delete(book)
+            session.commit()
+            return True
+    
+    # ------------------------------------------------------------
+    # Chapter related functions
+    # ------------------------------------------------------------
+
+    def try_create_chapter_info(self, book_id: int, title: str, index_string: str, start_page: int, end_page: int) -> Optional[int]:
         with self.new_session() as session:
             existing = _query_chapter_by_book_id_and_title(session, book_id, title)
             if existing:
@@ -428,13 +460,21 @@ class TextBookContext:
                 end_page_number=end_page,
                 book_id=book_id
             )
-            return _save_with_error_handling(session, chapter_info)
+            return _try_save(session, chapter_info)
     
     def get_chapters_by_book_id(self, book_id: int) -> list[ChapterInfo]:
         with self.new_session() as session:
             return _query_chapters_by_book_id(session, book_id)
+        
+    def get_chapters_by_book_id_and_page_range(self, book_id: int, start_page_number: int, end_page_number: int) -> List[ChapterInfo]:
+        with self.new_session() as session:
+            return _query_chapters_by_book_id_and_page_range(session, book_id, start_page_number, end_page_number)
     
-    def get_or_create_section(self, book_id: int, chapter_id: int, title: str, index_string: str, start_page: int, end_page: int) -> Optional[int]:
+    # ------------------------------------------------------------
+    # Section related functions
+    # ------------------------------------------------------------
+
+    def try_create_section_info(self, book_id: int, chapter_id: int, title: str, index_string: str, start_page: int, end_page: int) -> Optional[int]:
         with self.new_session() as session:
             existing = _query_section_by_book_id_and_title(session, book_id, title)
             if existing:
@@ -448,37 +488,37 @@ class TextBookContext:
                 chapter_id=chapter_id,
                 book_id=book_id
             )
-            return _save_with_error_handling(session, section_info)
+            return _try_save(session, section_info)
         
     def get_sections_by_book_id(self, book_id: int) -> list[SectionInfo]:
         with self.new_session() as session:
             return _query_sections_by_book_id(session, book_id)
-    
-    def get_all_books(self) -> list[BookInfo]:
-        """Get all books from the database"""
-        with self.new_session() as session:
-            return _query_all_books(session)
-    
-    def delete_book_by_file_name(self, book_file_name: str) -> bool:
-        """
-        Delete a book from the database by file name
-        
-        Args:
-            book_file_name: The file name (pdf_path) of the book to delete
-            
-        Returns:
-            True if the book was deleted, False if it was not found
-        """
-        with self.new_session() as session:
-            book = _query_book_by_file_name(session, book_file_name)
-            if book is None:
-                return False
-            
-            session.delete(book)
-            session.commit()
-            return True
 
-def _save_with_error_handling(session: Session, obj: Base):
+    def get_sections_by_book_id_and_page_range(self, book_id: int, start_page_number: int, end_page_number: int) -> List[SectionInfo]:
+        with self.new_session() as session:
+            return _query_sections_by_book_id_and_page_range(session, book_id, start_page_number, end_page_number)
+
+    # ------------------------------------------------------------
+    # Page related functions
+    # ------------------------------------------------------------
+
+    def try_create_page_info(self, book_id: int, page_number: int, summary: str) -> Optional[int]:
+        with self.new_session() as session:
+            existing = _query_page_by_book_id_and_page_number(session, book_id, page_number)
+            if existing:
+                return existing.page_id
+            page_info = PageInfo(
+                page_number=page_number,
+                summary=summary,
+                book_id=book_id
+            )
+            return _try_save(session, page_info)
+
+    def get_page_info(self, page_id: int) -> Optional[PageInfo]:
+        with self.new_session() as session:
+            return _query_page_by_id(session, page_id)
+
+def _try_save(session: Session, obj: Base):
     return_field = None
     if isinstance(obj, ChapterInfo):
         return_field = "chapter_id"
@@ -501,34 +541,28 @@ def _save_with_error_handling(session: Session, obj: Base):
         print(f" {return_field} already exists, skipping")
         session.rollback()
         if isinstance(obj, ChapterInfo):
-            existing = _query_chapter_by_book_id_and_title(session, obj.book_id, obj.title)
+            if obj.end_page_number is None:
+                raise ValueError("End page number is required for chapter")
+            existing = _query_chapter_by_book_id_and_exact_page_range(session, obj.book_id, obj.start_page_number, obj.end_page_number)
             return existing.chapter_id if existing else None
         elif isinstance(obj, SectionInfo):
-            raise NotImplementedError("TODO: Implement section query by book ID and title")
+            if obj.end_page_number is None:
+                raise ValueError("End page number is required for section")
+            existing = _query_section_by_book_id_and_exact_page_range(session, obj.book_id, obj.start_page_number, obj.end_page_number)
+            return existing.section_id if existing else None
+        elif isinstance(obj, PageInfo):
+            existing = _query_page_by_book_id_and_page_number(session, obj.book_id, obj.page_number)
+            return existing.page_id if existing else None
+
+
     except Exception as e:
         print(f"Error adding {return_field}: {e}")
         session.rollback()
         return None
     
-def _query_chapters_by_book_id(session: Session, book_id: int) -> list[ChapterInfo]:
-    """Query chapters by book ID"""
-    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id).order_by(ChapterInfo.start_page_number).all()
-
-def _query_chapter_by_book_id_and_title(session: Session, book_id: int, title: str) -> Optional[ChapterInfo]:
-    """Query chapter by book ID and title"""
-    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id, ChapterInfo.title == title).order_by(ChapterInfo.start_page_number).first()
-
-def _query_sections_by_book_id(session: Session, book_id: int) -> list[SectionInfo]:
-    """Query sections by book ID"""
-    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id).order_by(SectionInfo.start_page_number).all()
-
-def _query_sections_by_book_id_and_chapter_id(session: Session, book_id: int, chapter_id: int) -> list[SectionInfo]:
-    """Query sections by chapter ID"""
-    return session.query(SectionInfo).filter(SectionInfo.chapter_id == chapter_id).order_by(SectionInfo.start_page_number).all()
-
-def _query_section_by_book_id_and_title(session: Session, book_id: int, title: str) -> Optional[SectionInfo]:
-    """Query section by book ID and chapter ID and title"""
-    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id, SectionInfo.title == title).order_by(SectionInfo.start_page_number).first()
+# ------------------------------------------------------------
+# Book related functions
+# ------------------------------------------------------------
 
 def _query_book_by_id(session: Session, book_id: int) -> Optional[BookInfo]:
     """Query book by ID"""
@@ -553,3 +587,63 @@ def _create_book_and_return_info(session: Session, book_name: str, book_author: 
         session.commit()
         session.refresh(book_info)
         return book_info
+
+# ------------------------------------------------------------
+# Chapter related functions
+# ------------------------------------------------------------
+
+def _query_chapters_by_book_id(session: Session, book_id: int) -> list[ChapterInfo]:
+    """Query chapters by book ID"""
+    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id).order_by(ChapterInfo.start_page_number).all()
+
+def _query_chapter_by_book_id_and_title(session: Session, book_id: int, title: str) -> Optional[ChapterInfo]:
+    """Query chapter by book ID and title"""
+    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id, ChapterInfo.title == title).order_by(ChapterInfo.start_page_number).first()
+
+def _query_chapter_by_book_id_and_exact_page_range(session: Session, book_id: int, start_page_number: int, end_page_number: int) -> Optional[ChapterInfo]:
+    """Query chapter by book ID and exact page range"""
+    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id, ChapterInfo.start_page_number == start_page_number, ChapterInfo.end_page_number == end_page_number).order_by(ChapterInfo.start_page_number).first()
+
+def _query_chapters_by_book_id_and_page_range(session: Session, book_id: int, start_page_number: int, end_page_number: int) -> List[ChapterInfo]:
+    """Query chapters by book ID and page range"""
+    return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id, ChapterInfo.start_page_number <= start_page_number, ChapterInfo.end_page_number >= end_page_number).order_by(ChapterInfo.start_page_number).all()
+
+# ------------------------------------------------------------
+# Section related functions
+# ------------------------------------------------------------
+
+def _query_sections_by_book_id(session: Session, book_id: int) -> list[SectionInfo]:
+    """Query sections by book ID"""
+    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id).order_by(SectionInfo.start_page_number).all()
+
+def _query_sections_by_book_id_and_chapter_id(session: Session, book_id: int, chapter_id: int) -> list[SectionInfo]:
+    """Query sections by chapter ID"""
+    return session.query(SectionInfo).filter(SectionInfo.chapter_id == chapter_id).order_by(SectionInfo.start_page_number).all()
+
+def _query_section_by_book_id_and_title(session: Session, book_id: int, title: str) -> Optional[SectionInfo]:
+    """Query section by book ID and chapter ID and title"""
+    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id, SectionInfo.title == title).order_by(SectionInfo.start_page_number).first()
+
+def _query_section_by_book_id_and_exact_page_range(session: Session, book_id: int, start_page_number: int, end_page_number: int) -> Optional[SectionInfo]:
+    """Query section by book ID and exact page range"""
+    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id, SectionInfo.start_page_number == start_page_number, SectionInfo.end_page_number == end_page_number).order_by(SectionInfo.start_page_number).first()
+
+def _query_sections_by_book_id_and_page_range(session: Session, book_id: int, start_page_number: int, end_page_number: int) -> List[SectionInfo]:
+    """Query sections by book ID and page range"""
+    return session.query(SectionInfo).filter(SectionInfo.book_id == book_id, SectionInfo.start_page_number <= start_page_number, SectionInfo.end_page_number >= end_page_number).order_by(SectionInfo.start_page_number).all()
+
+# ------------------------------------------------------------
+# Page related functions
+# ------------------------------------------------------------
+
+def _query_pages_by_book_id(session: Session, book_id: int) -> list[PageInfo]:
+    """Query pages by book ID"""
+    return session.query(PageInfo).filter(PageInfo.book_id == book_id).order_by(PageInfo.page_number).all()
+
+def _query_page_by_book_id_and_page_number(session: Session, book_id: int, page_number: int) -> Optional[PageInfo]:
+    """Query page by book ID and page number"""
+    return session.query(PageInfo).filter(PageInfo.book_id == book_id, PageInfo.page_number == page_number).order_by(PageInfo.page_number).first()
+
+def _query_page_by_id(session: Session, page_id: int) -> Optional[PageInfo]:
+    """Query page by ID"""
+    return session.query(PageInfo).filter(PageInfo.page_id == page_id).first()

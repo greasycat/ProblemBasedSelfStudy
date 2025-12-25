@@ -2,7 +2,8 @@ import os
 import tomllib
 from warnings import warn
 
-from textbook import LazyTextbookReader, LLM, TextBookContext
+from textbook import LazyTextbookReader, LLM, TextBookDatabase
+from pathlib import Path
 
 def load_config() -> dict:
     if not os.path.exists("config.toml"):
@@ -22,11 +23,11 @@ def main():
     db_path = config.get("db_path", "textbook_context.db")
     
     llm = LLM()
-    with TextBookContext(db_path=db_path) as context:
-        with LazyTextbookReader("tests/textbooks/topology_scan.pdf", llm, context) as reader:
+    with TextBookDatabase(db_path=db_path) as context:
+        with LazyTextbookReader(Path("tests/textbooks/topology_scan.pdf"), llm, context) as reader:
             reader.update_book_info()
             reader.update_toc()
-            # reader.update_alignment_offset(page_number=15)
+            reader.update_alignment_offset(page_number=15)
             # reader.interactive_alignment_offset()
             reader.check_alignment_offset()
 
