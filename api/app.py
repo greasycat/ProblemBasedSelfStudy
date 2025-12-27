@@ -306,6 +306,9 @@ async def view_pdf(book_id: int = Query(..., description="ID of the book")):
 
 @app.post("/update-book-info", response_model=BookInfoResponse)
 async def update_book_info(request: UpdateBookInfoRequest):
+    if struct_logger:
+        struct_logger.info(f"Updating book info for book {request.book_id}", request=request)
+
     """Extract and update book information from the PDF"""
     try:
         pdf_path = get_pdf_path_from_book_id(request.book_id)
@@ -341,9 +344,13 @@ async def check_toc_exists(book_id: int = Query(..., description="ID of the book
 @app.post("/update-toc", response_model=TocResponse)
 async def update_toc(request: UpdateTocRequest):
     """Extract and update table of contents from the PDF"""
+    if struct_logger:
+        struct_logger.info(f"Updating table of contents for book {request.book_id}", request=request)
     try:
         pdf_path = get_pdf_path_from_book_id(request.book_id)
         with get_reader(pdf_path) as reader:
+            if not reader.check_if_book_exists_and_load():
+                raise HTTPException(status_code=404, detail="Book not found")
             reader.update_toc(caching=request.caching, overwrite=request.overwrite)
             return TocResponse(
                 book_id=request.book_id,

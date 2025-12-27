@@ -402,9 +402,9 @@ class TextBookDatabase:
         with self.new_session() as session:
             return _query_book_by_file_name(session, book_file_name)
 
-    def create_book(self, book_name: str, book_author: str, book_keywords: str, book_file_name: str) -> BookInfo:
+    def create_book(self, book_name: str, book_author: str, book_keywords: str, book_file_name: str, page_count: int) -> BookInfo:
         with self.new_session() as session:
-            book_info = _create_book_and_return_info(session, book_name, book_author, book_keywords, book_file_name)
+            book_info = _create_book_and_return_info(session, book_name, book_author, book_keywords, book_file_name, page_count)
             if book_info is None:
                 raise ValueError("Failed to create book")
             return book_info
@@ -442,6 +442,15 @@ class TextBookDatabase:
             session.delete(book)
             session.commit()
             return True
+    # ------------------------------------------------------------
+    # TOC related functions
+    # ------------------------------------------------------------
+
+    def delete_toc_by_book_id(self, book_id: int) -> None:
+        with self.new_session() as session:
+            _delete_sections_by_book_id(session, book_id)
+            _delete_chapters_by_book_id(session, book_id)
+            session.commit()
     
     # ------------------------------------------------------------
     # Chapter related functions
@@ -576,12 +585,13 @@ def _query_all_books(session: Session) -> list[BookInfo]:
     """Query all books"""
     return session.query(BookInfo).all()
 
-def _create_book_and_return_info(session: Session, book_name: str, book_author: str, book_keywords: str, book_file_name: str) -> Optional[BookInfo]:
+def _create_book_and_return_info(session: Session, book_name: str, book_author: str, book_keywords: str, book_file_name: str, page_count: int) -> Optional[BookInfo]:
         book_info = BookInfo(
             book_name=book_name,
             book_author=book_author,
             book_keywords=book_keywords,
             book_file_name=book_file_name,
+            book_pages=page_count,
         )
         session.add(book_info)
         session.commit()
@@ -608,6 +618,11 @@ def _query_chapters_by_book_id_and_page_range(session: Session, book_id: int, st
     """Query chapters by book ID and page range"""
     return session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id, ChapterInfo.start_page_number <= start_page_number, ChapterInfo.end_page_number >= end_page_number).order_by(ChapterInfo.start_page_number).all()
 
+def _delete_chapters_by_book_id(session: Session, book_id: int) -> None:
+    """Delete chapters by book ID"""
+    session.query(ChapterInfo).filter(ChapterInfo.book_id == book_id).delete()
+    session.commit()
+
 # ------------------------------------------------------------
 # Section related functions
 # ------------------------------------------------------------
@@ -631,6 +646,11 @@ def _query_section_by_book_id_and_exact_page_range(session: Session, book_id: in
 def _query_sections_by_book_id_and_page_range(session: Session, book_id: int, start_page_number: int, end_page_number: int) -> List[SectionInfo]:
     """Query sections by book ID and page range"""
     return session.query(SectionInfo).filter(SectionInfo.book_id == book_id, SectionInfo.start_page_number <= start_page_number, SectionInfo.end_page_number >= end_page_number).order_by(SectionInfo.start_page_number).all()
+
+def _delete_sections_by_book_id(session: Session, book_id: int) -> None:
+    """Delete sections by book ID"""
+    session.query(SectionInfo).filter(SectionInfo.book_id == book_id).delete()
+    session.commit()
 
 # ------------------------------------------------------------
 # Page related functions

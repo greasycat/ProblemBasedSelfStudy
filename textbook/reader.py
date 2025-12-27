@@ -32,10 +32,15 @@ def cover_prompt(cover: str) -> str:
     """
 
 def toc_prompt(toc: str) -> str:
+
+    # replace line breaks with <BREAK>
+    toc = toc.replace("\n", "<LINE BREAK>")
+
     return f"""
     Extract 
     1. The table of contents from the following text (lower case all letters)
     2. Treat bibliography and indexes as two separate chapters: 
+    3. If preface, about page, acknowledgements page and any other pages that are not relevant to the content of the book, do not include them in the table of contents
     
     from the following text:
     {toc}
@@ -223,7 +228,7 @@ class LazyTextbookReader:
         cover = self.get_page_content(0) # Get the first page of the book
         book_basic_info = self.llm.prompt_with_schema(cover_prompt(cover), schema=BookSchema)
         # deserialize the response to a BookBasicInfo object
-        book_info = self.database.create_book(book_basic_info.book_name, book_basic_info.book_author, book_basic_info.book_keywords, self.pdf_name)
+        book_info = self.database.create_book(book_basic_info.book_name, book_basic_info.book_author, book_basic_info.book_keywords, self.pdf_name, self.get_total_pages())
         self.book_info = book_info
 
     # ------------------------------------------------------------
@@ -239,14 +244,19 @@ class LazyTextbookReader:
         
     def update_toc(self, caching: bool = True, overwrite: bool = False):
         if self.book_info is None:
+            self.logger.error("Book basic information not extracted, please extract it first")
             raise ValueError("Book basic information not extracted, please extract it first")
 
+        if not overwrite and self.check_if_toc_exists():
+            self.logger.info(f"TOC already exists for book {self.book_info.book_id}, skipping overwrite")
+            return
+
         # TODO: Remove caching
-        if caching and os.path.exists("toc.json"):
-            with open("toc.json", "r") as f:
-                toc = json.load(f)
-                self.save_toc(toc)
-                return toc
+        # if caching and os.path.exists("toc.json"):
+        #     with open("toc.json", "r") as f:
+        #         toc = json.load(f)
+        #         self.save_toc(toc)
+        #         return toc
 
         toc = ""
         toc_start = False
@@ -266,13 +276,33 @@ class LazyTextbookReader:
 
         self.database.update_book_toc_end_page(self.book_info.book_id, toc_end_page)
         
-        toc = self.llm.prompt_with_schema(toc_prompt(toc), schema=TocSchema)
+        try:
+            self.logger.info(f"Sending TOC to LLM for book {self.book_info.book_id}, {toc[:100]}... ")
+            toc = self.llm.prompt_with_schema(toc_prompt(toc), schema=TocSchema)
+            self.logger.info(f"TOC extracted for book {self.book_info.book_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to extract TOC for book {self.book_info.book_id}: {e}")
+            raise ValueError(f"Failed to extract TOC for book {self.book_info.book_id}: {e}")
 
-        if caching:
-            with open("toc.json", "w") as f:
-                f.write(toc.model_dump_json())
+        # if caching:
+        #     with open("toc.json", "w") as f:
+        #         f.write(toc.model_dump_json())
 
         self.save_toc(toc.model_dump())
+    
+    def delete_toc(self):
+        if self.book_info is None or self.book_info.book_id is None:
+            raise ValueError("Book basic information not extracted, please extract it first")
+        
+        self.logger.info(f"Deleting TOC for book {self.book_info.book_id}")
+        self.database.delete_toc_by_book_id(self.book_info.book_id)
+        self.logger.info(f"TOC deleted for book {self.book_info.book_id}")
+    
+        if self.check_if_toc_exists():
+            self.logger.error(f"TOC still exists for book {self.book_info.book_id}, skipping deletion")
+            raise ValueError(f"TOC still exists for book {self.book_info.book_id}, skipping deletion")
+    
+
     
     @staticmethod
     def generate_block_with_range(block_list, end_page_number: int):
@@ -292,7 +322,11 @@ class LazyTextbookReader:
     def save_toc(self, toc: dict):
         if self.book_info is None or self.book_info.book_id is None:
             raise ValueError("Book basic information not extracted, please extract it first")
-
+        
+        # delete the existing TOC
+        self.logger.info(f"Deleting existing TOC for book {self.book_info.book_id} before saving new TOC")
+        self.delete_toc()
+        
         for chapter, start_page_number, end_page_number in self.generate_block_with_range(toc["chapters"], self.get_total_pages()-1):
             chapter_id = self.database.try_create_chapter_info(
                 self.book_info.book_id,

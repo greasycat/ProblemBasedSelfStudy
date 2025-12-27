@@ -68,7 +68,7 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
       }
       
       const offsetValue = alignmentOffset.trim() === '' ? undefined : parseInt(alignmentOffset, 10);
-      if (offsetValue !== undefined && (isNaN(offsetValue) || offsetValue !== book.alignment_offset)) {
+      if (offsetValue !== undefined && !isNaN(offsetValue)) {
         if (!isNaN(offsetValue)) {
           updateRequest.alignment_offset = offsetValue;
         }
@@ -77,6 +77,7 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
       // Check if there are any changes
       if (Object.keys(updateRequest).length === 1) {
         setError('No changes to save');
+        console.log(updateRequest);
         setLoading(false);
         return;
       }
@@ -198,7 +199,10 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
               <Input
                 type="number"
                 value={alignmentOffset}
-                onChange={(e) => setAlignmentOffset(e.target.value)}
+                onChange={(e) => {
+                  // try get first chapter start page number with api
+                  setAlignmentOffset(e.target.value);
+                }}
                 placeholder="Manually set e.g. 10"
                 disabled={loading}
                 className="flex-1"

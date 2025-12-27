@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { bookApi } from '../services/api';
 import { useBooks } from '../hooks/useBooks';
 import { BookDetails } from '../components/BookDetails';
 import { BookEdit } from '../components/BookEdit';
@@ -63,6 +64,20 @@ export function BooksPage() {
     setBookViewBook(book);
     // Start at page 0 or use alignment offset if it exists
     setBookViewPage(book.alignment_offset || 0);
+    bookApi.getChapters(book.book_id || 0).then((response) => {
+      const chapters = response.chapters;
+      if (chapters.length > 0) {
+        const firstChapterStartPageNumber = chapters[0].start_page_number;
+        setBookViewPage(firstChapterStartPageNumber + (book.alignment_offset || 0));
+      }
+      else {
+        console.log('No chapters found, setting to 0');
+        setBookViewPage(0);
+      }
+    }).catch((error) => {
+      console.log('Failed to get first chapter start page number:', error, 'setting to 0');
+      setBookViewPage(0);
+    });
     setIsBookViewOpen(true);
   };
 
@@ -70,6 +85,21 @@ export function BooksPage() {
     // Visual alignment logic will be implemented later
     // For now, just close the view
     console.log('Visual align confirmed for book:', bookViewBook?.book_id, 'at page:', bookViewPage);
+
+
+    bookApi.getChapters(bookViewBook?.book_id || 0).then((response) => {
+        const chapters = response.chapters;
+        if (chapters.length > 0) {
+          const firstChapterStartPageNumber = chapters[0].start_page_number;
+          console.log('First chapter start page number:', firstChapterStartPageNumber);
+          setBookToEdit({
+            ...bookToEdit!,
+            alignment_offset: bookViewPage - firstChapterStartPageNumber,
+          });
+        }
+      }).catch((error) => {
+        console.error('Failed to get first chapter start page number:', error);
+      });
   };
 
   return (
@@ -126,7 +156,7 @@ export function BooksPage() {
           totalPages={bookViewBook.total_pages}
           onPageChange={setBookViewPage}
           showConfirmPopup={true}
-          confirmQuestion="Is this the correct page for alignment?"
+          confirmQuestion="Is this page showing the first chapter of the book?"
           onConfirm={handleVisualAlignConfirm}
         />
       )}

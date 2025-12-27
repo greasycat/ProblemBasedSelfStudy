@@ -1,17 +1,18 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
-  size?: 'small' | 'medium' | 'large' | 'full';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'none';
+  size?: 'small' | 'medium' | 'large' | 'full' | 'none';
   children: ReactNode;
   isLoading?: boolean;
 }
 
 const variantClasses = {
-  primary: 'bg-primary text-white hover:bg-primary-dark hover:shadow-lg shadow-primary/20',
-  secondary: 'bg-primary-light text-white hover:bg-primary hover:shadow-lg shadow-primary/20',
-  danger: 'bg-error text-white hover:bg-red-600 hover:shadow-lg shadow-error/20',
-  ghost: 'bg-transparent text-text-primary hover:bg-background-subtle',
+  primary: 'bg-primary text-white rounded-lg hover:bg-primary-dark hover:shadow-lg shadow-primary/20',
+  secondary: 'bg-primary-light text-white rounded-lg hover:bg-primary hover:shadow-lg shadow-primary/20',
+  danger: 'bg-error text-white rounded-lg hover:bg-red-600 hover:shadow-lg shadow-error/20',
+  ghost: 'bg-transparent text-text-primary rounded-lg hover:bg-background-subtle',
+  none: '',
 };
 
 const sizeClasses = {
@@ -19,6 +20,7 @@ const sizeClasses = {
   medium: 'px-6 py-3 text-base',
   large: 'px-8 py-4 text-lg',
   full: 'w-full h-12',
+  none: '',
 };
 
 export function Button({
@@ -30,7 +32,7 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-lg cursor-pointer transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed';
+  const baseClasses = 'inline-flex items-center justify-center gap-2 cursor-pointer transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed';
   const variantClass = variantClasses[variant];
   const sizeClass = sizeClasses[size];
   const loadingClass = isLoading ? 'relative text-transparent' : '';

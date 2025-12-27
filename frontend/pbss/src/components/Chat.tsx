@@ -5,6 +5,8 @@ import { Modal } from './Modal';
 import { BookView } from './BookView';
 import { bookApi, sectionApi } from '../services/api';
 import type { TocItem, Book } from '../types/api';
+import { BookAction } from './BookAction';
+import type { ActionCallback } from './BookAction';
 
 interface Message {
   id: string;
@@ -193,20 +195,45 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
     }
   };
 
+  // Placeholder actions for BookAction component
+  const placeholderActions: ActionCallback[] = [
+    {
+      label: 'Get Table of Contents',
+      onClick: () => {
+        if (!selectedBook?.book_id) return;
+        bookApi.updateToc({
+          book_id: selectedBook.book_id,
+          overwrite: true,
+          caching: false,
+        }).then((response) => {
+          console.log('Table of contents updated:', response);
+        }).catch((error) => {
+          console.error('Failed to update table of contents:', error);
+        });
+      },
+      variant: 'none',
+    },
+    {
+      label: 'Extract Current Chapter',
+      onClick: () => {
+        console.log('Placeholder Action 2 clicked');
+      },
+      variant: 'none',
+    },
+    {
+      label: 'Extract Current Section',
+      onClick: () => {
+        console.log('Placeholder Action 3 clicked');
+      },
+      variant: 'none',
+    },
+  ];
+
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Table of Contents Section */}
       {selectedBook && (
-        <div className="px-6 py-4 border-b border-gray-200">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-text-secondary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-2 h-2 bg-text-secondary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-2 h-2 bg-text-secondary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-              </div>
-            </div>
-          ) : (
+        <div className="px-6 py-4 border-b border-gray-200 relative">
             <TableOfContents 
               displayItems={displayItems}
               totalPages={totalPages}
@@ -217,8 +244,12 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
               opacity={tocOpacity}
               bookId={selectedBook.book_id}
             />
-          )}
+            {/* BookAction Component - positioned absolutely below TOC */}
         </div>
+      )}
+
+      {selectedBook && (
+        <BookAction actions={placeholderActions} />
       )}
 
       {/* Messages Area */}
@@ -274,9 +305,12 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
         <div className="px-6 py-2 justify-center items-center flex gap-2">
           <Button
             variant="primary"
-            className="shadow-lg"
+            className="shadow-lg hover:opacity-80 hover:translate-y-[-2px]"
             onClick={() => {
               if (selectedItem?.start_page_number !== undefined) {
+                console.log('Selected item start page number:', selectedItem.start_page_number);
+                console.log('Alignment offset:', selectedBook?.alignment_offset);
+                console.log('Current PNG page:', selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
                 setCurrentPngPage(selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
               }
               setIsPngModalOpen(true);

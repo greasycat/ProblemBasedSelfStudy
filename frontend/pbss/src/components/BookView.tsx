@@ -161,7 +161,7 @@ export function BookView({
       >
         {/* Confirm Popup */}
         {isConfirmPopupVisible && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-lg shadow-2xl border-2 border-primary p-4 min-w-[300px]">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 bg-white rounded-lg shadow-2xl border-2 border-red-500 p-4 min-w-[300px]">
             <div className="flex flex-col gap-3">
               <p className="text-text-primary font-medium text-base m-0">
                 {confirmQuestion}
@@ -253,10 +253,10 @@ export function BookView({
         </div>
 
         {/* Page Indicator */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm font-medium">
+        <div className="absolute bottom-4 right-0 -translate-x-1/4 bg-black/70 text-white px-4 py-2 rounded-lg text-sm font-medium">
           {totalPages !== undefined 
-            ? `Page ${displayPageNumber + 1} of ${totalPages}`
-            : `Page ${displayPageNumber + 1}`
+            ? `Page ${displayPageNumber } of ${totalPages}`
+            : `Page ${displayPageNumber }`
           }
         </div>
       </div>
