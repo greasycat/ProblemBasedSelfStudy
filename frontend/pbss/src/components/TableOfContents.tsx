@@ -1,35 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import type { TocItem } from '../types/api';
-import { DivisionInformation } from './DivisionInformation';
+import { BlockDetails } from './BlockDetails';
 import { ArrowTurnUpLeftIcon } from '@heroicons/react/24/solid';
+import { useTocStore } from '../stores/useTocStore';
+import { useBooksStore } from '../stores/useBooksStore';
 
 
 interface TableOfContentsProps {
-  displayItems: TocItem[];
-  totalPages?: number;
   width?: number;
   height?: number;
-  selectedItem: TocItem | null;
-  onTocItemClick: (item: TocItem) => void;
-  onBack?: () => void;
-  showBackButton?: boolean;
-  opacity?: number;
-  bookId?: number;
 }
 
 export function TableOfContents({ 
-  displayItems,
-  totalPages,
   width = 800,
   height = 150,
-  selectedItem,
-  onTocItemClick,
-  onBack,
-  showBackButton = false,
-  opacity = 1,
-  bookId,
 }: TableOfContentsProps) {
+  const { state, handleTocItemClick, handleBack } = useTocStore();
+  const { selectedBook } = useBooksStore();
+  const { displayItems, totalPages, selectedItem, opacity } = state;
 
   const checkViewMode = () => {
     if (selectedItem && selectedItem.type === 'chapter') {
@@ -41,9 +30,7 @@ export function TableOfContents({
     return 'None';
   }
 
-  const handleTocItemClick = (item: TocItem) => {
-    onTocItemClick(item);
-  };
+  const showBackButton = selectedItem !== null;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -301,9 +288,9 @@ export function TableOfContents({
         >
           {checkViewMode() !== 'None' ? selectedItem?.title || 'No title' : 'Table of Contents'}
         </h3>
-        {showBackButton && onBack && (
+        {showBackButton && (
             <button
-              onClick={onBack}
+              onClick={() => handleBack()}
               className="ml-4 p-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-all duration-200"
             >
             <div className="flex items-center gap-2">
@@ -328,10 +315,10 @@ export function TableOfContents({
       
       {/* Division Information Component */}
       <div style={{ opacity }}>
-      <DivisionInformation 
+      <BlockDetails 
         item={selectedItem} 
         viewMode={checkViewMode()}
-        bookId={bookId}
+        bookId={selectedBook?.book_id}
       />
       </div>
     </div>

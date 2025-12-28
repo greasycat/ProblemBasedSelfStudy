@@ -1,37 +1,26 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Book } from '../types/api';
+import { useBooksStore } from '../stores/useBooksStore';
+import { useUIStore } from '../stores/useUIStore';
 import { Button } from './Button';
 import { healthApi } from '../services/api';
 import { PencilSquareIcon, TrashIcon, ArrowUpTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
-  books: Book[];
-  loading: boolean;
-  error: string | null;
-  selectedBook: Book | null;
-  onSelectBook: (book: Book) => void;
   onView: (book: Book) => void;
   onEdit: (book: Book) => void;
   onDelete: (book: Book) => void;
   onViewPdf?: (book: Book) => void;
-  onUploadBook?: (file: File) => Promise<Book>;
-  onDismissError: () => void;
-  onLoadBooks?: () => void;
 }
 
 export function Sidebar({
-  books,
-  loading,
-  error,
-  selectedBook,
-  onSelectBook,
   onEdit,
   onDelete,
   onViewPdf,
-  onUploadBook,
-  onDismissError,
-  onLoadBooks,
 }: SidebarProps) {
+  // Get state and operations from stores
+  const { books, selectedBook, selectBook, loadAllBooks, uploadBook } = useBooksStore();
+  const { loading, error, clearError } = useUIStore();
   const [healthStatus, setHealthStatus] = useState<{
     status: string;
     llm_initialized: boolean;
@@ -59,9 +48,7 @@ export function Sidebar({
       });
     
     // Load books from database on mount
-    if (onLoadBooks) {
-      onLoadBooks();
-    }
+    loadAllBooks();
 
     // Cleanup polling interval on unmount
     return () => {
@@ -71,11 +58,11 @@ export function Sidebar({
       }
       pollingBookIdRef.current = null;
     };
-  }, [onLoadBooks]);
+  }, [loadAllBooks]);
 
   // Watch for uploaded book to get a name
   useEffect(() => {
-    if (pollingBookIdRef.current && onLoadBooks) {
+    if (pollingBookIdRef.current) {
       const book = books.find((b) => b.book_id === pollingBookIdRef.current);
       if (book?.book_name) {
         // Book name is now available, stop polling
@@ -87,7 +74,7 @@ export function Sidebar({
         setUploading(false);
       }
     }
-  }, [books, onLoadBooks]);
+  }, [books]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -99,14 +86,9 @@ export function Sidebar({
       return;
     }
 
-    if (!onUploadBook) {
-      alert('Upload functionality is not available');
-      return;
-    }
-
     setUploading(true);
     try {
-      const uploadedBook = await onUploadBook(file);
+      const uploadedBook = await uploadBook(file);
       const bookId = uploadedBook.book_id;
 
       // Reset file input
@@ -115,17 +97,16 @@ export function Sidebar({
       }
 
       // Start polling until book_name is available
-      if (onLoadBooks) {
-        // Clear any existing polling interval
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-        }
+      // Clear any existing polling interval
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
 
-        // Set the book ID we're waiting for
-        pollingBookIdRef.current = bookId;
+      // Set the book ID we're waiting for
+      pollingBookIdRef.current = bookId;
 
-        // Initial load
-        await onLoadBooks();
+      // Initial load
+      await loadAllBooks();
 
         // Start polling every 1 second
         const maxAttempts = 60; // Maximum polling attempts (60 * 1s = 60 seconds)
@@ -143,12 +124,9 @@ export function Sidebar({
             setUploading(false);
           } else {
             // Continue polling
-            onLoadBooks();
+            loadAllBooks();
           }
         }, 1000); // Poll every 1 second
-      } else {
-        setUploading(false);
-      }
     } catch (err) {
       // Error is handled by the hook
       console.error('Upload failed:', err);
@@ -184,7 +162,7 @@ export function Sidebar({
             size="full" 
             onClick={handleUploadClick} 
             className="self-center justify-center"
-            disabled={uploading || loading || !onUploadBook}
+            disabled={uploading || loading}
             isLoading={uploading}
           >
             <ArrowUpTrayIcon className="w-6 h-6 text-primary" />
@@ -195,7 +173,7 @@ export function Sidebar({
           <div className="mt-2 text-sm text-error bg-red-50 border border-red-200 rounded px-3 py-2 shadow-sm">
             {error}
             <button
-              onClick={onDismissError}
+              onClick={clearError}
               className="ml-2 text-red-600 hover:text-red-800 font-semibold"
             >
               ×
@@ -218,7 +196,7 @@ export function Sidebar({
             {books.map((book) => (
               <div
                 key={book.book_id}
-                onClick={() => onSelectBook(book)}
+                onClick={() => selectBook(book)}
               >
                 <div className={`bg-background-off rounded-lg p-4 transition-all duration-100 ${
                   selectedBook?.book_id === book.book_id

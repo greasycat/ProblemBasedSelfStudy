@@ -3,8 +3,10 @@ import { Button } from './Button';
 import { TableOfContents } from './TableOfContents';
 import { Modal } from './Modal';
 import { BookView } from './BookView';
-import { bookApi, sectionApi } from '../services/api';
-import type { TocItem, Book } from '../types/api';
+import { bookApi } from '../services/api';
+import { useBooksStore } from '../stores/useBooksStore';
+import { useTocStore } from '../stores/useTocStore';
+import type { Book } from '../types/api';
 import { BookAction } from './BookAction';
 import type { ActionCallback } from './BookAction';
 
@@ -16,78 +18,25 @@ interface Message {
 }
 
 interface ChatProps {
-  selectedBook?: Book | null;
   bookToViewPdf?: Book | null;
   onPdfViewClose?: () => void;
 }
 
-export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps) {
+export function Chat({ bookToViewPdf, onPdfViewClose }: ChatProps) {
+  // Get selectedBook from store
+  const { selectedBook } = useBooksStore();
+  const { state: tocState, fetchChapters, fetchTotalPages, reset } = useTocStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [displayItems, setDisplayItems] = useState<TocItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<TocItem | null>(null);
-  const [parentItem, setParentItem] = useState<TocItem | null>(null);
-  const [tocOpacity, setTocOpacity] = useState(1);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isPngModalOpen, setIsPngModalOpen] = useState(false);
   const [currentPngPage, setCurrentPngPage] = useState<number>(0);
-  const [totalPages, setTotalPages] = useState<number | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-    
-  const fetchChapters =  async () => {
-
-      setTocOpacity(0);
-
-      // No book selected, reset state
-        if (!selectedBook?.book_id) {
-          setSelectedItem(null);
-          setDisplayItems([]);
-          return;
-        }
-
-        setIsLoading(true);
-        try {
-          const response = await bookApi.getChapters(selectedBook.book_id);
-          setDisplayItems(response.chapters);
-          setSelectedItem(null);
-        } catch (error) {
-          console.error('Failed to fetch chapters:', error);
-          setDisplayItems([]);
-          setSelectedItem(null);
-        } finally {
-          setIsLoading(false);
-        }
-
-      setTimeout(async () => {
-        setTocOpacity(1);
-      }, 200);
-  };
-
-  const fetchSections = async (chapter_id: number) => {
-
-    setTocOpacity(0);
-
-      if (!selectedBook?.book_id) return;
-      setIsLoading(true);
-      try {
-        const response = await sectionApi.getSections(selectedBook.book_id, chapter_id);
-        setDisplayItems(response.sections);
-      } catch (error) {
-        console.error('Failed to fetch sections:', error);
-        setDisplayItems([]);
-      } finally {
-          setIsLoading(false);
-        }
-
-    setTimeout(async () => {
-    setTocOpacity(1);
-    }, 200);
   };
 
   useEffect(() => {
@@ -96,24 +45,15 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
 
   // Fetch total pages and chapters when book is selected
   useEffect(() => {
-    const fetchTotalPages = async () => {
-      if (!selectedBook?.book_id) {
-        setTotalPages(undefined);
-        return;
-      }
-      
-      try {
-        const response = await bookApi.getTotalPages(selectedBook.book_id);
-        setTotalPages(response.total_pages);
-      } catch (error) {
-        console.error('Failed to fetch total pages:', error);
-        setTotalPages(undefined);
-      }
-    };
+    if (!selectedBook?.book_id) {
+      reset();
+      return;
+    }
 
     fetchTotalPages();
     fetchChapters();
-  }, [selectedBook?.book_id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBook?.book_id]); // Store functions are stable, no need to include them
 
   // Open PDF modal when bookToViewPdf changes
   useEffect(() => {
@@ -121,45 +61,6 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
       setIsPdfModalOpen(true);
     }
   }, [bookToViewPdf]);
-
-  // Handle chapter click to fetch sections
-  const handleTocItemClick = async (item: TocItem) => {
-    if (!selectedBook?.book_id || !item) return;
-
-    if (selectedItem) {
-      setParentItem(selectedItem);
-    }
-
-    setSelectedItem(item);
-
-    if (item.type === 'chapter') {
-      if (item.chapter_id) {
-        fetchSections(item.chapter_id);
-      }
-      return;
-    }
-
-    if (item.type === 'section') {
-      return;
-    }
-
-  };
-
-  // Handle back button to return to chapters view
-  const handleBack = () => {
-    if (!selectedBook?.book_id) return;
-
-    if (selectedItem?.type === 'chapter') {
-      fetchChapters();
-      return;
-    }
-
-    if (selectedItem?.type === 'section') {
-      // select selected item to parent item
-      setSelectedItem(parentItem);
-      return;
-    }
-  };
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -234,16 +135,7 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
       {/* Table of Contents Section */}
       {selectedBook && (
         <div className="px-6 py-4 border-b border-gray-200 relative">
-            <TableOfContents 
-              displayItems={displayItems}
-              totalPages={totalPages}
-              onTocItemClick={handleTocItemClick}
-              onBack={handleBack}
-              showBackButton={selectedItem !== null}
-              selectedItem={selectedItem}
-              opacity={tocOpacity}
-              bookId={selectedBook.book_id}
-            />
+            <TableOfContents />
             {/* BookAction Component - positioned absolutely below TOC */}
         </div>
       )}
@@ -307,11 +199,11 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
             variant="primary"
             className="shadow-lg hover:opacity-80 hover:translate-y-[-2px]"
             onClick={() => {
-              if (selectedItem?.start_page_number !== undefined) {
-                console.log('Selected item start page number:', selectedItem.start_page_number);
+              if (tocState.selectedItem?.start_page_number !== undefined) {
+                console.log('Selected item start page number:', tocState.selectedItem.start_page_number);
                 console.log('Alignment offset:', selectedBook?.alignment_offset);
-                console.log('Current PNG page:', selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
-                setCurrentPngPage(selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
+                console.log('Current PNG page:', tocState.selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
+                setCurrentPngPage(tocState.selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
               }
               setIsPngModalOpen(true);
             }}
@@ -375,7 +267,7 @@ export function Chat({ selectedBook, bookToViewPdf, onPdfViewClose }: ChatProps)
           onClose={() => setIsPngModalOpen(false)}
           bookId={selectedBook.book_id}
           currentPage={currentPngPage}
-          totalPages={totalPages}
+          totalPages={tocState.totalPages}
           onPageChange={(page) => setCurrentPngPage(page)}
         />
       )}

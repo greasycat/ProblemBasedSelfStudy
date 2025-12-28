@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { bookApi } from '../services/api';
-import { useBooks } from '../hooks/useBooks';
+import { useBooksStore } from '../stores/useBooksStore';
+import { useModalStore, type ModalState, DEFAULT_MODAL_STATE } from '../stores/useModalStore';
+import { useBookViewStore } from '../stores/useBookViewStore';
 import { BookDetails } from '../components/BookDetails';
 import { BookEdit } from '../components/BookEdit';
 import { BookView } from '../components/BookView';
@@ -8,42 +10,54 @@ import { Sidebar } from '../components/Sidebar';
 import { Chat } from '../components/Chat';
 import type { Book } from '../types/api';
 
-export function BooksPage() {
-  const { books, loading, error, removeBook, updateBook, loadAllBooks, uploadBook, setError } = useBooks();
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [bookToEdit, setBookToEdit] = useState<Book | undefined>();
-  const [bookToViewPdf, setBookToViewPdf] = useState<Book | null>(null);
-  
-  // BookView state for visual alignment
-  const [isBookViewOpen, setIsBookViewOpen] = useState(false);
-  const [bookViewBook, setBookViewBook] = useState<Book | null>(null);
-  const [bookViewPage, setBookViewPage] = useState<number>(0);
+// Modal keys for consistent modal identification
+const MODAL_KEYS = {
+  EDIT_BOOK: 'editBook',
+  BOOK_DETAILS: 'bookDetails',
+} as const;
 
-  const handleSelectBook = (book: Book) => {
-    setSelectedBook(book);
-  };
+export function BooksPage() {
+  // Get state and operations from stores
+  const { selectedBook, selectBook, removeBook, updateBook } = useBooksStore();
+  const { openModal, closeModal } = useModalStore();
+  const { state: bookViewState, close: closeBookView, setPage, openForVisualAlignment } = useBookViewStore();
+  
+  // Memoize selectors to prevent infinite loops
+  // Zustand needs stable selector function references
+  const editModalSelector = useCallback(
+    (state: { modals: Record<string, ModalState> }) =>
+      state.modals[MODAL_KEYS.EDIT_BOOK] || DEFAULT_MODAL_STATE,
+    []
+  );
+  const detailsModalSelector = useCallback(
+    (state: { modals: Record<string, ModalState> }) =>
+      state.modals[MODAL_KEYS.BOOK_DETAILS]?.isOpen ?? false,
+    []
+  );
+  
+  // Get modal states reactively using memoized selectors
+  const editModalState = useModalStore(editModalSelector) as ModalState<Book>;
+  const detailsModalIsOpen = useModalStore(detailsModalSelector);
+  
+  // PDF view state (used for Chat component)
+  const [bookToViewPdf, setBookToViewPdf] = useState<Book | null>(null);
 
   const handleView = (book: Book) => {
-    setSelectedBook(book);
-    setIsDetailsOpen(true);
+    selectBook(book);
+    openModal(MODAL_KEYS.BOOK_DETAILS, book);
   };
 
   const handleEdit = (book: Book) => {
-    setBookToEdit(book);
-    setIsFormOpen(true);
+    openModal(MODAL_KEYS.EDIT_BOOK, book);
   };
 
   const handleDelete = async (book: Book) => {
     if (window.confirm(`Are you sure you want to remove "${book.book_name || `Book ${book.book_id}`}"?`)) {
       try {
         await removeBook(book.book_id);
-        if (selectedBook?.book_id === book.book_id) {
-          setSelectedBook(null);
-        }
+        // selectedBook is automatically cleared in the store if it was the deleted book
       } catch (err) {
-        // Error is handled by the hook
+        // Error is handled by the hook and store
         console.error('Failed to delete book:', err);
       }
     }
@@ -54,52 +68,35 @@ export function BooksPage() {
     // Don't close the modal here - let BookEdit handle it after showing success
   };
 
-  const handleEditClose = () => {
-    setIsFormOpen(false);
-    setBookToEdit(undefined);
-  };
-
   const handleVisualAlign = (book: Book) => {
-    // Open BookView with confirm popup for visual alignment
-    setBookViewBook(book);
-    // Start at page 0 or use alignment offset if it exists
-    setBookViewPage(book.alignment_offset || 0);
-    bookApi.getChapters(book.book_id || 0).then((response) => {
-      const chapters = response.chapters;
-      if (chapters.length > 0) {
-        const firstChapterStartPageNumber = chapters[0].start_page_number;
-        setBookViewPage(firstChapterStartPageNumber + (book.alignment_offset || 0));
-      }
-      else {
-        console.log('No chapters found, setting to 0');
-        setBookViewPage(0);
-      }
-    }).catch((error) => {
-      console.log('Failed to get first chapter start page number:', error, 'setting to 0');
-      setBookViewPage(0);
-    });
-    setIsBookViewOpen(true);
+    // Open BookView for visual alignment
+    openForVisualAlignment(book);
   };
 
-  const handleVisualAlignConfirm = () => {
-    // Visual alignment logic will be implemented later
-    // For now, just close the view
-    console.log('Visual align confirmed for book:', bookViewBook?.book_id, 'at page:', bookViewPage);
+  const handleVisualAlignConfirm = async () => {
+    // Calculate alignment offset based on current page and first chapter
+    if (!bookViewState.book) return;
 
-
-    bookApi.getChapters(bookViewBook?.book_id || 0).then((response) => {
-        const chapters = response.chapters;
-        if (chapters.length > 0) {
-          const firstChapterStartPageNumber = chapters[0].start_page_number;
-          console.log('First chapter start page number:', firstChapterStartPageNumber);
-          setBookToEdit({
-            ...bookToEdit!,
-            alignment_offset: bookViewPage - firstChapterStartPageNumber,
-          });
-        }
-      }).catch((error) => {
-        console.error('Failed to get first chapter start page number:', error);
-      });
+    try {
+      const response = await bookApi.getChapters(bookViewState.book.book_id || 0);
+      const chapters = response.chapters;
+      if (chapters.length > 0 && editModalState.data) {
+        const firstChapterStartPageNumber = chapters[0].start_page_number;
+        const alignmentOffset = bookViewState.currentPage - firstChapterStartPageNumber;
+        
+        // Update the book in edit modal with new alignment offset
+        const updatedBook: Book = {
+          ...editModalState.data,
+          alignment_offset: alignmentOffset,
+        };
+        updateBook(updatedBook);
+        
+        // Update edit modal data to reflect the change
+        openModal(MODAL_KEYS.EDIT_BOOK, updatedBook);
+      }
+    } catch (error) {
+      console.error('Failed to get first chapter start page number:', error);
+    }
   };
 
   return (
@@ -107,54 +104,40 @@ export function BooksPage() {
       {/* Sidebar */}
       <div className="w-80 flex-shrink-0 relative z-10">
         <Sidebar
-          books={books}
-          loading={loading}
-          error={error}
-          selectedBook={selectedBook}
-          onSelectBook={handleSelectBook}
           onView={handleView}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onViewPdf={(book) => setBookToViewPdf(book)}
-          onUploadBook={uploadBook}
-          onDismissError={() => setError(null)}
-          onLoadBooks={loadAllBooks}
         />
       </div>
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 relative z-20">
-        <Chat selectedBook={selectedBook} bookToViewPdf={bookToViewPdf} onPdfViewClose={() => setBookToViewPdf(null)} />
+        <Chat bookToViewPdf={bookToViewPdf} onPdfViewClose={() => setBookToViewPdf(null)} />
       </div>
 
       {/* Modals */}
       <BookDetails
-        isOpen={isDetailsOpen}
-        onClose={() => {
-          setIsDetailsOpen(false);
-        }}
+        isOpen={detailsModalIsOpen}
+        onClose={() => closeModal(MODAL_KEYS.BOOK_DETAILS)}
         book={selectedBook}
         onUpdate={updateBook}
       />
       <BookEdit
-        isOpen={isFormOpen}
-        onClose={handleEditClose}
-        book={bookToEdit || null}
+        isOpen={editModalState.isOpen}
+        onClose={() => closeModal(MODAL_KEYS.EDIT_BOOK)}
+        book={(editModalState.data as Book | null) || null}
         onUpdate={handleEditUpdate}
-        onVisualAlign={bookToEdit ? () => handleVisualAlign(bookToEdit) : undefined}
+        onVisualAlign={editModalState.data ? () => handleVisualAlign(editModalState.data as Book) : undefined}
       />
-      {bookViewBook && (
+      {bookViewState.book && (
         <BookView
-          isOpen={isBookViewOpen}
-          onClose={() => {
-            setIsBookViewOpen(false);
-            setBookViewBook(null);
-            setBookViewPage(0);
-          }}
-          bookId={bookViewBook.book_id}
-          currentPage={bookViewPage}
-          totalPages={bookViewBook.total_pages}
-          onPageChange={setBookViewPage}
+          isOpen={bookViewState.isOpen}
+          onClose={closeBookView}
+          bookId={bookViewState.book.book_id}
+          currentPage={bookViewState.currentPage}
+          totalPages={bookViewState.book.total_pages}
+          onPageChange={setPage}
           showConfirmPopup={true}
           confirmQuestion="Is this page showing the first chapter of the book?"
           onConfirm={handleVisualAlignConfirm}

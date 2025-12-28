@@ -1,15 +1,15 @@
 import os
-from typing import TypeVar
-
+from typing import TypeVar, List
 
 
 import llm
+from llm import Attachment
 import structlog
 
 from pydantic import BaseModel
 
 PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
-TEXT_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash")
+TEXT_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "gemini-3-flash-preview")
 EMBEDDING_MODEL_NAME = os.getenv("LLM_EMBEDDING_MODEL_NAME", "gemini-embedding-001")
 API_KEY = os.getenv("LLM_GEMINI_KEY")
 if API_KEY is None:
@@ -32,6 +32,12 @@ class LLM:
     def prompt_with_schema(self, prompt: str, schema: type[T]) -> T:
         self.logger.debug("Prompting LLM with prompt", prompt=prompt, schema=schema)
         response = self.text_model.prompt(prompt, schema=schema)
+        self.logger.debug(f"Response: {response.text()}")
+        return schema.model_validate_json(response.text())
+
+    def prompt_with_schema_and_attachments(self, prompt: str, schema: type[T], attachments: List[Attachment]) -> T:
+        self.logger.debug("Prompting LLM with prompt", prompt=prompt, schema=schema, attachments=attachments)
+        response = self.text_model.prompt(prompt, schema=schema, attachments=attachments)
         self.logger.debug(f"Response: {response.text()}")
         return schema.model_validate_json(response.text())
     

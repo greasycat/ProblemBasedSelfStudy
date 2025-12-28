@@ -2,8 +2,7 @@ import os
 from pathlib import Path
 import io
 import tempfile
-import json
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from PIL import Image
 import pymupdf
@@ -13,6 +12,7 @@ import structlog
 
 from textbook.database import TextBookDatabase, BookInfo, ChapterInfo
 from textbook.model import LLM
+from llm import Attachment
 from textbook.mineru import MinerURequest
 from textbook.utils import detect_toc
 
@@ -27,7 +27,7 @@ def cover_prompt(cover: str) -> str:
     2. author information (lower case all letters)
     3. keywords to best describe the book content, do not include edition or publisher or license information in keywords
     
-    from the following text of the book cover:
+    from the following text as well as the image of the book cover:
     {cover}
     """
 
@@ -42,7 +42,7 @@ def toc_prompt(toc: str) -> str:
     2. Treat bibliography and indexes as two separate chapters: 
     3. If preface, about page, acknowledgements page and any other pages that are not relevant to the content of the book, do not include them in the table of contents
     
-    from the following text:
+    from the following text and image (use both to correct OCR errors):
     {toc}
     """
 
@@ -92,6 +92,16 @@ class PageSchema(BaseModel):
         return "\n".join([f"{summary.title}: {summary.summary}" for summary in self.page_summary])
 
 
+def _save_images_to_temp_attachment(image: Image.Image) -> Attachment:
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+        tmp_path = tmp_file.name
+    image.save(tmp_path, 'PNG')
+    return Attachment(path=tmp_path, type="image/png")
+
+def _remove_temp_attachment(attachment: Attachment):
+    if attachment.path and os.path.exists(attachment.path):
+        os.unlink(attachment.path)
+
 class LazyTextbookReader:
     
     def __init__(self, pdf_path: Path, llm: LLM, database: TextBookDatabase, force_text_only_extraction: bool = False):
@@ -118,8 +128,6 @@ class LazyTextbookReader:
     def __enter__(self):
         if not os.path.exists(self.pdf_path):
             raise FileNotFoundError(f"PDF file not found: {self.pdf_path}")
-        else:
-            self.logger.info(f"PDF file found: {self.pdf_path}")
 
         self.pdf_document = pymupdf.open(self.pdf_path)
         return self
@@ -210,7 +218,20 @@ class LazyTextbookReader:
             return self.get_page_as_text_from_image(page_number)
         else:
             return extracted_text
-        
+    
+    def get_page_content_with_image(self, page_number: int, apply_alignment_offset: bool = False) -> Tuple[str, Image.Image]:
+        if apply_alignment_offset and self.book_info is not None and self.book_info.book_alignment_offset is not None:
+            page_number = page_number + self.book_info.book_alignment_offset
+
+        image = self.get_page_as_image(page_number)
+
+        extracted_text = self.get_page_as_text(page_number).strip()
+        if len(extracted_text) < MIN_PAGE_CONTENT_LENGTH:
+            extracted_text = self.get_page_as_text_from_image(page_number)
+
+        return extracted_text, image
+
+    
     # ------------------------------------------------------------
     # Book related functions
     # ------------------------------------------------------------
@@ -225,8 +246,10 @@ class LazyTextbookReader:
     
     def update_book_info(self):
         self.logger.debug(f"Updating book info for {self.pdf_name}")
-        cover = self.get_page_content(0) # Get the first page of the book
-        book_basic_info = self.llm.prompt_with_schema(cover_prompt(cover), schema=BookSchema)
+        cover_text, cover_image = self.get_page_content_with_image(0) # Get the first page of the book
+        cover = _save_images_to_temp_attachment(cover_image)
+        book_basic_info = self.llm.prompt_with_schema_and_attachments(cover_prompt(cover_text), schema=BookSchema, attachments=[cover])
+        _remove_temp_attachment(cover)
         # deserialize the response to a BookBasicInfo object
         book_info = self.database.create_book(book_basic_info.book_name, book_basic_info.book_author, book_basic_info.book_keywords, self.pdf_name, self.get_total_pages())
         self.book_info = book_info
@@ -262,8 +285,11 @@ class LazyTextbookReader:
         toc_start = False
         number_of_toc_pages = 0
         toc_end_page = 0
+        images: List[Attachment] = []
         for page_num in range(0, MAX_PAGE_FOR_TOC_DETECTION):
-            page_text = self.get_page_content(page_num)
+            page_text, page_image = self.get_page_content_with_image(page_num)
+
+            images.append(_save_images_to_temp_attachment(page_image))
             is_toc = detect_toc(page_text)
             if not toc_start and is_toc:
                 toc_start = True
@@ -275,11 +301,14 @@ class LazyTextbookReader:
                 break
 
         self.database.update_book_toc_end_page(self.book_info.book_id, toc_end_page)
-        
+
+
         try:
             self.logger.info(f"Sending TOC to LLM for book {self.book_info.book_id}, {toc[:100]}... ")
-            toc = self.llm.prompt_with_schema(toc_prompt(toc), schema=TocSchema)
+            toc = self.llm.prompt_with_schema_and_attachments(toc_prompt(toc), schema=TocSchema, attachments=images)
             self.logger.info(f"TOC extracted for book {self.book_info.book_id}")
+            for image in images:
+                _remove_temp_attachment(image)
         except Exception as e:
             self.logger.error(f"Failed to extract TOC for book {self.book_info.book_id}: {e}")
             raise ValueError(f"Failed to extract TOC for book {self.book_info.book_id}: {e}")
