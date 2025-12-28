@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from './Button';
 import { TableOfContents } from './TableOfContents';
 import { Modal } from './Modal';
-import { BookView } from './BookView';
 import { bookApi } from '../services/api';
 import { useBooksStore } from '../stores/useBooksStore';
 import { useTocStore } from '../stores/useTocStore';
-import type { Book } from '../types/api';
+import { useUIStore } from '../stores/useUIStore';
+import { useBookViewStore } from '../stores/useBookViewStore';
 import { BookAction } from './BookAction';
 import type { ActionCallback } from './BookAction';
 
@@ -17,21 +17,16 @@ interface Message {
   timestamp: Date;
 }
 
-interface ChatProps {
-  bookToViewPdf?: Book | null;
-  onPdfViewClose?: () => void;
-}
-
-export function Chat({ bookToViewPdf, onPdfViewClose }: ChatProps) {
+export function Chat() {
   // Get selectedBook from store
   const { selectedBook } = useBooksStore();
   const { state: tocState, fetchChapters, fetchTotalPages, reset } = useTocStore();
+  const { pdfViewBook, setPdfViewBook } = useUIStore();
+  const { open: openBookView, setPage: setBookViewPage } = useBookViewStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
-  const [isPngModalOpen, setIsPngModalOpen] = useState(false);
-  const [currentPngPage, setCurrentPngPage] = useState<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -55,12 +50,12 @@ export function Chat({ bookToViewPdf, onPdfViewClose }: ChatProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBook?.book_id]); // Store functions are stable, no need to include them
 
-  // Open PDF modal when bookToViewPdf changes
+  // Open PDF modal when pdfViewBook changes
   useEffect(() => {
-    if (bookToViewPdf) {
+    if (pdfViewBook) {
       setIsPdfModalOpen(true);
     }
-  }, [bookToViewPdf]);
+  }, [pdfViewBook]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -199,13 +194,14 @@ export function Chat({ bookToViewPdf, onPdfViewClose }: ChatProps) {
             variant="primary"
             className="shadow-lg hover:opacity-80 hover:translate-y-[-2px]"
             onClick={() => {
-              if (tocState.selectedItem?.start_page_number !== undefined) {
+              if (selectedBook && tocState.selectedItem?.start_page_number !== undefined) {
+                const pageNumber = tocState.selectedItem.start_page_number + (selectedBook.alignment_offset || 0);
                 console.log('Selected item start page number:', tocState.selectedItem.start_page_number);
-                console.log('Alignment offset:', selectedBook?.alignment_offset);
-                console.log('Current PNG page:', tocState.selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
-                setCurrentPngPage(tocState.selectedItem.start_page_number + (selectedBook?.alignment_offset || 0));
+                console.log('Alignment offset:', selectedBook.alignment_offset);
+                console.log('Current PNG page:', pageNumber);
+                openBookView(selectedBook);
+                setBookViewPage(pageNumber);
               }
-              setIsPngModalOpen(true);
             }}
           >
           View
@@ -238,12 +234,12 @@ export function Chat({ bookToViewPdf, onPdfViewClose }: ChatProps) {
       </div>
 
       {/* PDF Viewer Modal */}
-      {bookToViewPdf?.book_id && (
+      {pdfViewBook?.book_id && (
         <Modal
           isOpen={isPdfModalOpen}
           onClose={() => {
             setIsPdfModalOpen(false);
-            onPdfViewClose?.();
+            setPdfViewBook(null);
           }}
           title="PDF Viewer"
           maxWidth="max-w-6xl"
@@ -252,24 +248,12 @@ export function Chat({ bookToViewPdf, onPdfViewClose }: ChatProps) {
         >
           <div className="w-full h-[100vh]">
             <iframe
-              src={`${import.meta.env.VITE_API_BASE_URL || ''}/view-pdf?book_id=${bookToViewPdf.book_id}`}
+              src={`${import.meta.env.VITE_API_BASE_URL || ''}/view-pdf?book_id=${pdfViewBook.book_id}`}
               className="w-full h-full border-0 rounded-xl"
               title="PDF Viewer"
             />
           </div>
         </Modal>
-      )}
-
-      {/* PNG Viewer Modal */}
-      {selectedBook?.book_id && currentPngPage !== undefined && (
-        <BookView
-          isOpen={isPngModalOpen}
-          onClose={() => setIsPngModalOpen(false)}
-          bookId={selectedBook.book_id}
-          currentPage={currentPngPage}
-          totalPages={tocState.totalPages}
-          onPageChange={(page) => setCurrentPngPage(page)}
-        />
       )}
     </div>
   );

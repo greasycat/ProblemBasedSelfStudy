@@ -2,33 +2,31 @@ import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { bookApi } from '../services/api';
+import { useBookViewStore } from '../stores/useBookViewStore';
+import { useBooksStore } from '../stores/useBooksStore';
+import { useModalStore } from '../stores/useModalStore';
+import type { ModalState } from '../stores/useModalStore';
+import type { Book } from '../types/api';
 
-interface BookViewProps {
-  isOpen: boolean;
-  onClose: () => void;
-  bookId: number;
-  currentPage: number;
-  totalPages?: number;
-  onPageChange: (page: number) => void;
-  // Optional confirm popup props
-  showConfirmPopup?: boolean;
-  confirmQuestion?: string;
-  onConfirm?: () => void;
-  // alignmentOffset?: number;
-}
+const EDIT_BOOK_MODAL_KEY = 'EDIT_BOOK';
 
-export function BookView({
-  isOpen,
-  onClose,
-  bookId,
-  currentPage,
-  totalPages,
-  onPageChange,
-  showConfirmPopup = false,
-  confirmQuestion = 'Is this the correct page?',
-  onConfirm,
-  // alignmentOffset = 0,
-}: BookViewProps) {
+export function BookView() {
+  // Get state from store
+  const bookViewState = useBookViewStore((state) => state.state);
+  const close = useBookViewStore((state) => state.close);
+  const setPage = useBookViewStore((state) => state.setPage);
+  
+  // Get other store actions
+  const updateBook = useBooksStore((state) => state.updateBook);
+  const openModal = useModalStore((state) => state.openModal);
+  
+  // Extract values from state
+  const { isOpen, book, currentPage, isVisualAlignmentMode } = bookViewState;
+  const bookId = book?.book_id || 0;
+  const totalPages = book?.total_pages;
+  const showConfirmPopup = isVisualAlignmentMode;
+  const confirmQuestion = 'Is this page showing the first chapter of the book?';
+  
   const [isConfirmPopupVisible, setIsConfirmPopupVisible] = useState(showConfirmPopup);
   const [canGoPrevious, setCanGoPrevious] = useState(false);
   const [canGoNext, setCanGoNext] = useState(true);
@@ -37,7 +35,7 @@ export function BookView({
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-      // Reset confirm popup visibility when BookView opens
+      // Reset confirm popup visibility when BookView opens in visual alignment mode
       if (showConfirmPopup) {
         setIsConfirmPopupVisible(true);
       }
@@ -52,14 +50,14 @@ export function BookView({
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        close();
       }
     };
     if (isOpen) {
       window.addEventListener('keydown', handleEscape);
       return () => window.removeEventListener('keydown', handleEscape);
     }
-  }, [isOpen, onClose]);
+  }, [isOpen, close]);
 
   // Check if pages exist by calling the API
   useEffect(() => {
@@ -96,40 +94,40 @@ export function BookView({
       if (!isOpen || e.key === 'Escape' || checkingPages) return;
       if (e.key === 'ArrowLeft' && canGoPrevious) {
         e.preventDefault();
-        onPageChange(currentPage - 1);
+        setPage(currentPage - 1);
       } else if (e.key === 'ArrowRight' && canGoNext) {
         e.preventDefault();
-        onPageChange(currentPage + 1);
+        setPage(currentPage + 1);
       }
     };
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, currentPage, canGoPrevious, canGoNext, onPageChange, checkingPages]);
+  }, [isOpen, currentPage, canGoPrevious, canGoNext, setPage, checkingPages]);
 
   const handlePreviousPage = () => {
     if (canGoPrevious) {
-      onPageChange(currentPage - 1);
+      setPage(currentPage - 1);
     }
   };
 
   const handleNextPage = () => {
     if (canGoNext) {
-      onPageChange(currentPage + 1);
+      setPage(currentPage + 1);
     }
   };
 
   const handlePrevious5Pages = () => {
     const newPage = Math.max(0, currentPage - 5);
     if (newPage !== currentPage) {
-      onPageChange(newPage);
+      setPage(newPage);
     }
   };
 
   const handleNext5Pages = () => {
     // Try to go forward 5 pages - will be checked by API on page change
-    onPageChange(currentPage + 5);
+    setPage(currentPage + 5);
   };
 
   if (!isOpen) return null;
@@ -141,19 +139,48 @@ export function BookView({
   const displayPageNumber = currentPage; // currentPage already includes alignment offset for display
   const imageUrl = `${API_BASE_URL}/page-image-binary?book_id=${bookId}&page_number=${apiPageNumber}`;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsConfirmPopupVisible(false);
-    if (onConfirm) {
-      onConfirm();
+    
+    if (isVisualAlignmentMode && book) {
+      try {
+        const response = await bookApi.getChapters(book.book_id || 0);
+        const chapters = response.chapters;
+        if (chapters.length > 0) {
+          // Get current edit modal state
+          const modalState = useModalStore.getState();
+          const editModal = modalState.modals[EDIT_BOOK_MODAL_KEY] as ModalState<{ book: Book; isNew: boolean }> | undefined;
+          
+          if (editModal?.data) {
+            const { book: currentBook, isNew } = editModal.data;
+            
+            const firstChapterStartPageNumber = chapters[0].start_page_number;
+            const alignmentOffset = currentPage - firstChapterStartPageNumber;
+            
+            // Update the book with new alignment offset
+            const updatedBook: Book = {
+              ...currentBook,
+              alignment_offset: alignmentOffset,
+            };
+            updateBook(updatedBook);
+            
+            // Update edit modal data to reflect the change (preserve isNew flag)
+            openModal(EDIT_BOOK_MODAL_KEY, { book: updatedBook, isNew });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get first chapter start page number:', error);
+      }
     }
-    onClose();
+    
+    close();
   };
 
   return (
     <div 
       className="fixed inset-0 flex items-center justify-center z-[1000] p-4"
       style={{ backgroundColor: 'transparent' }}
-      onClick={onClose}
+      onClick={close}
     >
       <div 
         className="relative bg-white rounded-xl max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl"
@@ -177,7 +204,7 @@ export function BookView({
 
         {/* Close Button */}
         <div className="absolute top-2 right-2 z-10">
-          <Button variant="ghost" size="small" onClick={onClose}>
+          <Button variant="ghost" size="small" onClick={close}>
             ×
           </Button>
         </div>

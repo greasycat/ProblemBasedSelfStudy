@@ -2,25 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import type { Book } from '../types/api';
 import { useBooksStore } from '../stores/useBooksStore';
 import { useUIStore } from '../stores/useUIStore';
+import { useModalStore } from '../stores/useModalStore';
 import { Button } from './Button';
 import { healthApi } from '../services/api';
 import { PencilSquareIcon, TrashIcon, ArrowUpTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
-interface SidebarProps {
-  onView: (book: Book) => void;
-  onEdit: (book: Book) => void;
-  onDelete: (book: Book) => void;
-  onViewPdf?: (book: Book) => void;
-}
+// Modal key for edit book modal
+const MODAL_KEY_EDIT_BOOK = 'EDIT_BOOK';
 
-export function Sidebar({
-  onEdit,
-  onDelete,
-  onViewPdf,
-}: SidebarProps) {
+export function Sidebar() {
   // Get state and operations from stores
-  const { books, selectedBook, selectBook, loadAllBooks, uploadBook } = useBooksStore();
-  const { loading, error, clearError } = useUIStore();
+  const { books, selectedBook, selectBook, loadAllBooks, uploadBook, removeBook } = useBooksStore();
+  const { loading, error, clearError, setPdfViewBook } = useUIStore();
+  const { openModal } = useModalStore();
   const [healthStatus, setHealthStatus] = useState<{
     status: string;
     llm_initialized: boolean;
@@ -72,9 +66,12 @@ export function Sidebar({
         }
         pollingBookIdRef.current = null;
         setUploading(false);
+        
+        // Open edit modal for the uploaded book with isNew flag
+        openModal(MODAL_KEY_EDIT_BOOK, { book, isNew: true });
       }
     }
-  }, [books]);
+  }, [books, openModal]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -142,6 +139,24 @@ export function Sidebar({
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleEdit = (book: Book) => {
+    openModal(MODAL_KEY_EDIT_BOOK, { book, isNew: false });
+  };
+
+  const handleDelete = async (book: Book) => {
+    if (window.confirm(`Are you sure you want to remove "${book.book_name || `Book ${book.book_id}`}"?`)) {
+      try {
+        await removeBook(book.book_id);
+      } catch (err) {
+        console.error('Failed to delete book:', err);
+      }
+    }
+  };
+
+  const handleViewPdf = (book: Book) => {
+    setPdfViewBook(book);
   };
 
   return (
@@ -215,22 +230,20 @@ export function Sidebar({
                       )}
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
-                      {onViewPdf && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onViewPdf(book);
-                          }}
-                          className="p-1.5 text-text-secondary hover:text-primary transition-colors rounded hover:bg-background-subtle"
-                          aria-label="View PDF"
-                        >
-                          <DocumentTextIcon className="w-5 h-5" />
-                        </button>
-                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onEdit(book);
+                          handleViewPdf(book);
+                        }}
+                        className="p-1.5 text-text-secondary hover:text-primary transition-colors rounded hover:bg-background-subtle"
+                        aria-label="View PDF"
+                      >
+                        <DocumentTextIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(book);
                         }}
                         className="p-1.5 text-text-secondary hover:text-primary transition-colors rounded hover:bg-background-subtle"
                         aria-label="Edit book"
@@ -240,7 +253,7 @@ export function Sidebar({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDelete(book);
+                          handleDelete(book);
                         }}
                         className="p-1.5 text-text-secondary hover:text-error transition-colors rounded hover:bg-background-subtle"
                         aria-label="Delete book"

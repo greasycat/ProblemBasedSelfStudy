@@ -1,20 +1,38 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Alert } from './Alert';
 import { bookApi } from '../services/api';
+import { useModalStore, type ModalState, DEFAULT_MODAL_STATE } from '../stores/useModalStore';
+import { useBooksStore } from '../stores/useBooksStore';
+import { useBookViewStore } from '../stores/useBookViewStore';
 import type { Book } from '../types/api';
 
-interface BookEditProps {
-  isOpen: boolean;
-  onClose: () => void;
-  book: Book | null;
-  onUpdate: (book: Book) => void;
-  onVisualAlign?: () => void;
-}
+// Modal key for edit book modal
+const EDIT_BOOK_MODAL_KEY = 'EDIT_BOOK';
 
-export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: BookEditProps) {
+// Type for edit modal data
+type EditModalData = { book: Book; isNew: boolean };
+
+export function BookEdit() {
+  // Get modal state from store
+  const editModalSelector = useCallback(
+    (state: { modals: Record<string, ModalState> }) =>
+      state.modals[EDIT_BOOK_MODAL_KEY] || DEFAULT_MODAL_STATE,
+    []
+  );
+  const editModalState = useModalStore(editModalSelector) as ModalState<EditModalData>;
+  const closeModal = useModalStore((state) => state.closeModal);
+  
+  // Get book and modal state
+  const book = editModalState.data?.book || null;
+  const isNewBook = editModalState.data?.isNew || false;
+  const isOpen = editModalState.isOpen;
+  
+  // Get store actions
+  const updateBook = useBooksStore((state) => state.updateBook);
+  const openForVisualAlignment = useBookViewStore((state) => state.openForVisualAlignment);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -35,7 +53,7 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
       setError(null);
       setSuccess(null);
     }
-  }, [isOpen, book]);
+  }, [isOpen, book?.book_id, book?.alignment_offset, book?.book_name, book?.book_author, book?.book_keywords]);
 
   const handleSave = async () => {
     if (!book) return;
@@ -94,17 +112,18 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
       setSuccess('Book information updated successfully');
       
       // Update the book object with new values
-      onUpdate({
+      const updatedBook: Book = {
         ...book,
         book_name: updateRequest.book_name !== undefined ? updateRequest.book_name : book.book_name,
         book_author: updateRequest.book_author !== undefined ? updateRequest.book_author : book.book_author,
         book_keywords: updateRequest.book_keywords !== undefined ? updateRequest.book_keywords : book.book_keywords,
         alignment_offset: updateRequest.alignment_offset !== undefined ? updateRequest.alignment_offset : book.alignment_offset,
-      });
+      };
+      updateBook(updatedBook);
 
       // Close modal after a short delay to show success message
       setTimeout(() => {
-        onClose();
+        closeModal(EDIT_BOOK_MODAL_KEY);
       }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update book information');
@@ -123,16 +142,26 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
     }
     setError(null);
     setSuccess(null);
-    onClose();
+    closeModal(EDIT_BOOK_MODAL_KEY);
   };
 
-  if (!book) return null;
+  const handleVisualAlign = () => {
+    if (book) {
+      openForVisualAlignment(book);
+    }
+  };
+
+  const modalTitle = book
+    ? isNewBook
+      ? `New Book: ${book.book_name || `Book ${book.book_id}`}`
+      : `Edit Book: ${book.book_name || `Book ${book.book_id}`}`
+    : 'Edit Book';
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={handleCancel}
-      title={`Edit Book: ${book.book_name || `Book ${book.book_id}`}`}
+      title={modalTitle}
       footer={
         <>
           <Button variant="secondary" onClick={handleCancel} disabled={loading}>
@@ -187,12 +216,8 @@ export function BookEdit({ isOpen, onClose, book, onUpdate, onVisualAlign }: Boo
               <Button
                 variant="primary"
                 size="medium"
-                onClick={() => {
-                  if (onVisualAlign) {
-                    onVisualAlign();
-                  }
-                }}
-                disabled={loading || !onVisualAlign}
+                onClick={handleVisualAlign}
+                disabled={loading || !book}
               >
                 Visual Align
               </Button>

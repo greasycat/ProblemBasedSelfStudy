@@ -9,6 +9,8 @@ interface BookViewState {
   book: Book | null;
   /** The current page number */
   currentPage: number;
+  /** Whether the view is in visual alignment mode (shows confirm popup) */
+  isVisualAlignmentMode: boolean;
 }
 
 interface BookViewStore {
@@ -26,6 +28,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
     isOpen: false,
     book: null,
     currentPage: 0,
+    isVisualAlignmentMode: false,
   },
 
   open: (book: Book) => {
@@ -34,6 +37,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
         isOpen: true,
         book,
         currentPage: 0,
+        isVisualAlignmentMode: false,
       },
     });
   },
@@ -44,6 +48,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
         isOpen: false,
         book: null,
         currentPage: 0,
+        isVisualAlignmentMode: false,
       },
     });
   },
@@ -66,6 +71,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
         isOpen: true,
         book,
         currentPage: initialPage,
+        isVisualAlignmentMode: true,
       },
     });
 
@@ -80,6 +86,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
           state: {
             ...state.state,
             currentPage: initialPage,
+            isVisualAlignmentMode: true,
           },
         }));
       } else {
@@ -88,6 +95,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
           state: {
             ...state.state,
             currentPage: 0,
+            isVisualAlignmentMode: true,
           },
         }));
       }
@@ -97,6 +105,7 @@ export const useBookViewStore = create<BookViewStore>((set) => ({
         state: {
           ...state.state,
           currentPage: book.alignment_offset || 0,
+          isVisualAlignmentMode: true,
         },
       }));
     }

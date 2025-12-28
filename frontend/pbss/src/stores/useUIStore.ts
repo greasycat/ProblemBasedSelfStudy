@@ -1,10 +1,13 @@
 import { create } from 'zustand';
+import type { Book } from '../types/api';
 
 interface UIState {
   /** Global loading state */
   loading: boolean;
   /** Global error message */
   error: string | null;
+  /** Book to view in PDF modal */
+  pdfViewBook: Book | null;
   
   // Actions
   /** Set loading state */
@@ -13,6 +16,8 @@ interface UIState {
   setError: (error: string | null) => void;
   /** Clear error message */
   clearError: () => void;
+  /** Set book to view in PDF modal */
+  setPdfViewBook: (book: Book | null) => void;
 }
 
 /**
@@ -36,11 +41,14 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   loading: false,
   error: null,
+  pdfViewBook: null,
 
   setLoading: (loading) => set({ loading }),
 
   setError: (error) => set({ error }),
 
   clearError: () => set({ error: null }),
+
+  setPdfViewBook: (book) => set({ pdfViewBook: book }),
 }));
 
