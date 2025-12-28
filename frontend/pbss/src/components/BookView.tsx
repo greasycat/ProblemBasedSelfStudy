@@ -141,7 +141,7 @@ export function BookView() {
 
   const handleConfirm = async () => {
     setIsConfirmPopupVisible(false);
-    
+    console.log('handleConfirm', isVisualAlignmentMode, book);
     if (isVisualAlignmentMode && book) {
       try {
         const response = await bookApi.getChapters(book.book_id || 0);
@@ -150,7 +150,7 @@ export function BookView() {
           // Get current edit modal state
           const modalState = useModalStore.getState();
           const editModal = modalState.modals[EDIT_BOOK_MODAL_KEY] as ModalState<{ book: Book; isNew: boolean }> | undefined;
-          
+          console.log('editModal', editModal);
           if (editModal?.data) {
             const { book: currentBook, isNew } = editModal.data;
             
@@ -164,9 +164,13 @@ export function BookView() {
             };
             updateBook(updatedBook);
             
+            console.log('updatedBook', updatedBook);
             // Update edit modal data to reflect the change (preserve isNew flag)
             openModal(EDIT_BOOK_MODAL_KEY, { book: updatedBook, isNew });
           }
+        }
+        else {
+          console.error('No chapters found');
         }
       } catch (error) {
         console.error('Failed to get first chapter start page number:', error);

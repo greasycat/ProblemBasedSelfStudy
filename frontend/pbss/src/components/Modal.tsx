@@ -11,9 +11,10 @@ interface ModalProps {
   maxWidth?: string;
   hideHeader?: boolean;
   noShadow?: boolean;
+  zIndex?: number;
 }
 
-export function Modal({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-2xl', hideHeader = false, noShadow = false }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-2xl', hideHeader = false, noShadow = false, zIndex = 1000 }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -41,15 +42,16 @@ export function Modal({ isOpen, onClose, title, children, footer, maxWidth = 'ma
 
   return (
     <div 
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4"
+      className="fixed inset-0  flex items-center justify-center p-4"
+      style={{ zIndex }}
       onClick={onClose}
     >
       <div 
-        className={`bg-white rounded-xl ${maxWidth} w-full max-h-[90vh] flex flex-col ${noShadow ? '' : 'shadow-2xl'} ${hideHeader ? 'relative' : ''}`}
+        className={`bg-white rounded-xl border-2  ${maxWidth} w-full max-h-[90vh] flex flex-col ${noShadow ? '' : 'shadow-2xl'} ${hideHeader ? 'relative' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {!hideHeader && (
-          <div className="px-6 py-4 shadow-sm flex justify-between items-center bg-background-off">
+          <div className="px-6 py-4 shadow-sm flex justify-between items-center rounded-t-xl">
             <h2 className="m-0 text-text-primary text-2xl font-semibold">{title}</h2>
             <Button variant="ghost" size="small" onClick={onClose}>
               ×
@@ -63,7 +65,7 @@ export function Modal({ isOpen, onClose, title, children, footer, maxWidth = 'ma
             </Button>
           </div>
         )}
-        <div className={`${hideHeader ? '' : 'p-6'} overflow-y-auto flex-1 bg-white`}>{children}</div>
+        <div className={`${hideHeader ? '' : 'p-6'} overflow-y-auto flex-1 bg-white rounded-b-xl`}>{children}</div>
         {footer && (
           <div className="px-6 py-4 shadow-lg flex justify-end gap-4 bg-background-off">
             {footer}

@@ -50,7 +50,7 @@ class BookInfo(Base):
     book_embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     book_file_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     book_toc_end_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    book_alignment_offset: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    book_alignment_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     
     # Relationships to other tables
     chapters: Mapped[list["ChapterInfo"]] = relationship(

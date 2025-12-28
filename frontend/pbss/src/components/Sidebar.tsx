@@ -3,8 +3,11 @@ import type { Book } from '../types/api';
 import { useBooksStore } from '../stores/useBooksStore';
 import { useUIStore } from '../stores/useUIStore';
 import { useModalStore } from '../stores/useModalStore';
+import { useToastStore } from '../stores/useToastStore';
+import { useGuidanceStore, Instruction } from '../stores/useGuidanceStore';
+import { useBookViewStore } from '../stores/useBookViewStore';
 import { Button } from './Button';
-import { healthApi } from '../services/api';
+import { healthApi, bookApi } from '../services/api';
 import { PencilSquareIcon, TrashIcon, ArrowUpTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 // Modal key for edit book modal
@@ -15,6 +18,9 @@ export function Sidebar() {
   const { books, selectedBook, selectBook, loadAllBooks, uploadBook, removeBook } = useBooksStore();
   const { loading, error, clearError, setPdfViewBook } = useUIStore();
   const { openModal } = useModalStore();
+  const { showToast } = useToastStore();
+  const { setInstructions, openGuidance } = useGuidanceStore();
+  const { openForVisualAlignment } = useBookViewStore();
   const [healthStatus, setHealthStatus] = useState<{
     status: string;
     llm_initialized: boolean;
@@ -67,11 +73,56 @@ export function Sidebar() {
         pollingBookIdRef.current = null;
         setUploading(false);
         
-        // Open edit modal for the uploaded book with isNew flag
-        openModal(MODAL_KEY_EDIT_BOOK, { book, isNew: true });
+        // Show guidance instead of edit modal
+        const handleUpdateToc = async () => {
+          if (!book) return;
+          try {
+            showToast('Extracting TOC...', 'info');
+            await bookApi.updateToc({ 
+              book_id: book.book_id, 
+              caching: true, 
+              overwrite: false 
+            });
+            showToast('TOC extracted successfully!', 'success');
+            // Reload books to update TOC status
+            await loadAllBooks();
+          } catch (err) {
+            console.error('Failed to update TOC:', err);
+            showToast('Failed to extract TOC', 'error');
+          }
+        };
+
+        const handleVisualAlign = async () => {
+          if (!book) return;
+          try {
+            await openForVisualAlignment(book);
+            // Close guidance when opening visual alignment
+            useGuidanceStore.getState().closeGuidance();
+          } catch (err) {
+            console.error('Failed to open visual alignment:', err);
+            showToast('Failed to open visual alignment', 'error');
+          }
+        };
+
+        // Create guidance instructions
+        const instructions = [
+          new Instruction(
+            "You've successfully uploaded a book, next step is to extract the TOC",
+            [handleUpdateToc],
+            ["Update TOC"]
+          ),
+          new Instruction(
+            "You will need to visually align the book",
+            [handleVisualAlign],
+            ["Visual Align"]
+          ),
+        ];
+
+        setInstructions(instructions);
+        openGuidance();
       }
     }
-  }, [books, openModal]);
+  }, [books, openModal, setInstructions, openGuidance, showToast, loadAllBooks, openForVisualAlignment]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -85,6 +136,7 @@ export function Sidebar() {
 
     setUploading(true);
     try {
+      showToast('Uploading takes a few seconds...', 'info');
       const uploadedBook = await uploadBook(file);
       const bookId = uploadedBook.book_id;
 
@@ -109,6 +161,7 @@ export function Sidebar() {
         const maxAttempts = 60; // Maximum polling attempts (60 * 1s = 60 seconds)
         let attempts = 0;
 
+
         pollingIntervalRef.current = setInterval(() => {
           attempts++;
           if (attempts >= maxAttempts) {
@@ -126,7 +179,7 @@ export function Sidebar() {
         }, 1000); // Poll every 1 second
     } catch (err) {
       // Error is handled by the hook
-      console.error('Upload failed:', err);
+      showToast('Upload failed', 'error');
       // Clean up polling state on error
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);

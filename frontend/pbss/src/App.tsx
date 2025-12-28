@@ -1,4 +1,7 @@
 import { BooksPage } from './pages/BooksPage';
+import { ToastContainer } from './components/ToastContainer';
+import { Guidance } from './components/Guidance';
+import { DebugToolbox } from './components/DebugToolbox';
 
 function App() {
   return (
@@ -6,6 +9,9 @@ function App() {
       <main className="flex-1 overflow-hidden">
         <BooksPage />
       </main>
+      <ToastContainer />
+      <Guidance />
+      <DebugToolbox />
     </div>
   );
 }
