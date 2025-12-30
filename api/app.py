@@ -2,12 +2,14 @@
 import io
 import os
 import sys
+import asyncio
 from pathlib import Path
 from typing import Optional, List
 import tomllib
 import base64
 import uuid
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 
 
 # Logging
@@ -34,6 +36,7 @@ llm: Optional[LLM] = None
 database: Optional[TextBookDatabase] = None
 db_path: str = "textbook_context.db"
 uploads_dir: str = "uploads"
+executor: Optional[ThreadPoolExecutor] = None
 
 
 
@@ -107,7 +110,7 @@ def load_config() -> dict:
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
     # Startup
-    global llm, database, db_path, uploads_dir, struct_logger
+    global llm, database, db_path, uploads_dir, struct_logger, executor
     
     config = load_config()
     db_path = config.get("db_path", "textbook_context.db")
@@ -118,6 +121,9 @@ async def lifespan(app: FastAPI):
 
     struct_logger = structlog.get_logger()
     
+    # Initialize thread pool executor for blocking operations
+    executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="api-worker")
+    
     llm = LLM()
     database = TextBookDatabase(db_path=db_path)
     database.__enter__()
@@ -125,6 +131,8 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
+    if executor:
+        executor.shutdown(wait=True)
     if database:
         database.__exit__(None, None, None)
 
@@ -311,13 +319,23 @@ async def update_book_info(request: UpdateBookInfoRequest):
 
     """Extract and update book information from the PDF"""
     try:
+        if not executor:
+            raise HTTPException(status_code=500, detail="Executor not initialized")
+        
         pdf_path = get_pdf_path_from_book_id(request.book_id)
-        with get_reader(pdf_path) as reader:
-            reader.update_book_info()
-            return BookInfoResponse(
-                book_id=request.book_id,
-                message="Book info updated successfully"
-            )
+        
+        # Define a blocking function to run in executor
+        def update_book_info_blocking():
+            with get_reader(pdf_path) as reader:
+                reader.update_book_info()
+        
+        # Run the blocking operation in executor to avoid blocking the event loop
+        await asyncio.get_event_loop().run_in_executor(executor, update_book_info_blocking)
+        
+        return BookInfoResponse(
+            book_id=request.book_id,
+            message="Book info updated successfully"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -347,15 +365,25 @@ async def update_toc(request: UpdateTocRequest):
     if struct_logger:
         struct_logger.info(f"Updating table of contents for book {request.book_id}", request=request)
     try:
+        if not executor:
+            raise HTTPException(status_code=500, detail="Executor not initialized")
+        
         pdf_path = get_pdf_path_from_book_id(request.book_id)
-        with get_reader(pdf_path) as reader:
-            if not reader.check_if_book_exists_and_load():
-                raise HTTPException(status_code=404, detail="Book not found")
-            reader.update_toc(caching=request.caching, overwrite=request.overwrite)
-            return TocResponse(
-                book_id=request.book_id,
-                message="Table of contents updated successfully"
-            )
+        
+        # Define a blocking function to run in executor
+        def update_toc_blocking():
+            with get_reader(pdf_path) as reader:
+                if not reader.check_if_book_exists_and_load():
+                    raise HTTPException(status_code=404, detail="Book not found")
+                reader.update_toc(caching=request.caching, overwrite=request.overwrite)
+        
+        # Run the blocking operation in executor to avoid blocking the event loop
+        await asyncio.get_event_loop().run_in_executor(executor, update_toc_blocking)
+        
+        return TocResponse(
+            book_id=request.book_id,
+            message="Table of contents updated successfully"
+        )
     except HTTPException:
         raise
     except ValueError as e:
@@ -368,14 +396,24 @@ async def update_toc(request: UpdateTocRequest):
 async def update_alignment_offset(request: UpdateAlignmentOffsetRequest):
     """Update the alignment offset for page numbers"""
     try:
+        if not executor:
+            raise HTTPException(status_code=500, detail="Executor not initialized")
+        
         pdf_path = get_pdf_path_from_book_id(request.book_id)
-        with get_reader(pdf_path) as reader:
-            reader.update_alignment_offset(request.page_number)
-            return AlignmentOffsetResponse(
-                book_id=request.book_id,
-                message="Alignment offset updated successfully",
-                offset=request.page_number
-            )
+        
+        # Define a blocking function to run in executor
+        def update_alignment_offset_blocking():
+            with get_reader(pdf_path) as reader:
+                reader.update_alignment_offset(request.page_number)
+        
+        # Run the blocking operation in executor to avoid blocking the event loop
+        await asyncio.get_event_loop().run_in_executor(executor, update_alignment_offset_blocking)
+        
+        return AlignmentOffsetResponse(
+            book_id=request.book_id,
+            message="Alignment offset updated successfully",
+            offset=request.page_number
+        )
     except HTTPException:
         raise
     except ValueError as e:
@@ -425,13 +463,23 @@ async def update_book_fields(book_id: int, request: UpdateBookFieldsRequest):
 async def check_alignment_offset(request: CheckAlignmentOffsetRequest):
     """Check alignment offset by returning sample pages"""
     try:
+        if not executor:
+            raise HTTPException(status_code=500, detail="Executor not initialized")
+        
         pdf_path = get_pdf_path_from_book_id(request.book_id)
-        with get_reader(pdf_path) as reader:
-            results = reader.check_alignment_offset()
-            return AlignmentCheckResponse(
-                book_id=request.book_id,
-                results=results
-            )
+        
+        # Define a blocking function to run in executor
+        def check_alignment_offset_blocking():
+            with get_reader(pdf_path) as reader:
+                return reader.check_alignment_offset()
+        
+        # Run the blocking operation in executor to avoid blocking the event loop
+        results = await asyncio.get_event_loop().run_in_executor(executor, check_alignment_offset_blocking)
+        
+        return AlignmentCheckResponse(
+            book_id=request.book_id,
+            results=results
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -512,18 +560,27 @@ async def upload_book(file: UploadFile = File(..., description="PDF file to uplo
         
         # Use LazyTextbookReader to create book entry
         try:
-            with get_reader(Path(file_path)) as reader:
-                reader.update_book_info()
-                
-                # Get the created book info
-                book_info = reader.book_info
-                if not book_info or not book_info.book_id:
-                    raise HTTPException(status_code=500, detail="Failed to create book entry")
-                
-                return UploadBookResponse(
-                    book_id=book_info.book_id,
-                    message="Book uploaded and created successfully"
-                )
+            if not executor:
+                raise HTTPException(status_code=500, detail="Executor not initialized")
+            
+            pdf_path = Path(file_path)
+            
+            # Define a blocking function to run in executor
+            def update_book_info_blocking():
+                with get_reader(pdf_path) as reader:
+                    reader.update_book_info()
+                    return reader.book_info
+            
+            # Run the blocking operation in executor to avoid blocking the event loop
+            book_info = await asyncio.get_event_loop().run_in_executor(executor, update_book_info_blocking)
+            
+            if not book_info or not book_info.book_id:
+                raise HTTPException(status_code=500, detail="Failed to create book entry")
+            
+            return UploadBookResponse(
+                book_id=book_info.book_id,
+                message="Book uploaded and created successfully"
+            )
         except Exception as reader_error:
             # If book creation fails, clean up the uploaded file
             if os.path.exists(file_path):

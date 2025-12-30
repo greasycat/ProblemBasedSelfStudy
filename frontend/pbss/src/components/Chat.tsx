@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import { useToastStore } from '../stores/useToastStore';
 import { Button } from './Button';
 import { TableOfContents } from './TableOfContents';
 import { Modal } from './Modal';
+import { ConfirmDialog } from './ConfirmDialog';
 import { bookApi } from '../services/api';
 import { useBooksStore } from '../stores/useBooksStore';
 import { useTocStore } from '../stores/useTocStore';
@@ -23,10 +25,12 @@ export function Chat() {
   const { state: tocState, fetchChapters, fetchTotalPages, reset } = useTocStore();
   const { pdfViewBook, setPdfViewBook } = useUIStore();
   const { open: openBookView, setPage: setBookViewPage } = useBookViewStore();
+  const { showToast } = useToastStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isBuildTocConfirmOpen, setIsBuildTocConfirmOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -91,21 +95,28 @@ export function Chat() {
     }
   };
 
-  // Placeholder actions for BookAction component
-  const placeholderActions: ActionCallback[] = [
+  const handleBuildToc = () => {
+    if (!selectedBook?.book_id) return;
+    showToast('Building table of contents, this may take 90 seconds or less...', 'info');
+    bookApi.updateToc({
+      book_id: selectedBook.book_id,
+      overwrite: true,
+      caching: false,
+    }).then((_) => {
+      showToast('Table of contents updated', 'success');
+      // Refresh chapters after TOC is built
+      fetchChapters();
+    }).catch((error) => {
+      showToast('Failed to update table of contents with error:\n ' + error, 'error');
+    });
+  };
+
+  const buildActions: ActionCallback[] = [
     {
-      label: 'Get Table of Contents',
+      label: 'Build Table of Contents',
       onClick: () => {
         if (!selectedBook?.book_id) return;
-        bookApi.updateToc({
-          book_id: selectedBook.book_id,
-          overwrite: true,
-          caching: false,
-        }).then((response) => {
-          console.log('Table of contents updated:', response);
-        }).catch((error) => {
-          console.error('Failed to update table of contents:', error);
-        });
+        setIsBuildTocConfirmOpen(true);
       },
       variant: 'none',
     },
@@ -136,7 +147,7 @@ export function Chat() {
       )}
 
       {selectedBook && (
-        <BookAction actions={placeholderActions} />
+        <BookAction actions={buildActions} />
       )}
 
       {/* Messages Area */}
@@ -255,6 +266,19 @@ export function Chat() {
           </div>
         </Modal>
       )}
+
+      {/* Build TOC Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isBuildTocConfirmOpen}
+        message="Building the table of contents may take up to 90 seconds. This will overwrite the existing table of contents if one exists. Do you want to continue?"
+        onConfirm={() => {
+          setIsBuildTocConfirmOpen(false);
+          handleBuildToc();
+        }}
+        onCancel={() => setIsBuildTocConfirmOpen(false)}
+        confirmLabel="Build TOC"
+        cancelLabel="Cancel"
+      />
     </div>
   );
 }

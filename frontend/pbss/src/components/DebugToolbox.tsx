@@ -38,7 +38,7 @@ export function DebugToolbox() {
   };
 
   return (
-    <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
+    <div className="fixed right-2 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-5 border-2 border-primary rounded-lg p-4">
       <Button
         variant="secondary"
         size="small"

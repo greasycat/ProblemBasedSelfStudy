@@ -9,6 +9,7 @@ import { useBookViewStore } from '../stores/useBookViewStore';
 import { Button } from './Button';
 import { healthApi, bookApi } from '../services/api';
 import { PencilSquareIcon, TrashIcon, ArrowUpTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { capitalizeFirstLetterOfEachWord } from '../misc/utils';
 
 // Modal key for edit book modal
 const MODAL_KEY_EDIT_BOOK = 'EDIT_BOOK';
@@ -31,12 +32,6 @@ export function Sidebar() {
   const pollingIntervalRef = useRef<number | null>(null);
   const pollingBookIdRef = useRef<number | null>(null);
 
-  const capitalizeFirstLetterOfEachWord = (sentence: string) => {
-    return sentence
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
 
   useEffect(() => {
     // Check backend health on mount
@@ -118,7 +113,7 @@ export function Sidebar() {
           ),
         ];
 
-        setInstructions(instructions);
+        setInstructions(instructions, "Are you sure you want to exit?");
         openGuidance();
       }
     }

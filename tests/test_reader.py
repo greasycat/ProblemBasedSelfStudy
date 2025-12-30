@@ -3,6 +3,10 @@ import pytest
 import shutil
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Set dummy API key to avoid import errors (tests don't use LLM for actual calls)
 # os.environ.setdefault("LLM_GEMINI_KEY", "dummy_key_for_testing")
 
@@ -39,15 +43,19 @@ class TestLazyTextbookReader:
             # If LLM initialization fails, we'll skip the test
             pytest.skip("LLM initialization failed (expected with dummy key)")
     
-    def test_get_page_30_contains_text(self, database: TextBookDatabase, llm: LLM):
-        """Test that page 30 from scan PDF contains 'the concept of function'"""
+    def test_get_page_15_contains_text(self, database: TextBookDatabase, llm: LLM):
+        """Test that page 15 from scan PDF contains 'the concept of function'"""
+        page_number = 15
+
         if not scan_book_path.exists():
             pytest.skip(f"Test PDF file not found: {scan_book_path}")
         
         # Use force_text_only_extraction to avoid needing MinerU
         with LazyTextbookReader(scan_book_path, llm, database, force_text_only_extraction=False) as reader:
-            # Page numbers are 0-indexed, so page 30 (1-indexed) is page 29 (0-indexed)
-            page_text = reader.get_page_content(29)
+
+            reader.check_if_book_exists_and_load()
+
+            page_text = reader.get_page_content(page_number, apply_alignment_offset=True)
 
             print("page_text: ", page_text)
             
@@ -55,7 +63,7 @@ class TestLazyTextbookReader:
             assert "the concept of function" in page_text.lower(), \
                 f"Page 30 should contain 'the concept of function', but got: {page_text[:200]}..."
             
-            page_id = reader.create_or_update_page_info(29)
+            page_id = reader.create_or_update_page_info(page_number, apply_alignment_offset=True)
 
             assert page_id is not None, "Failed to create page"
 

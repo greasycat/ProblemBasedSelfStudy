@@ -5,6 +5,7 @@ import { BlockDetails } from './BlockDetails';
 import { ArrowTurnUpLeftIcon } from '@heroicons/react/24/solid';
 import { useTocStore } from '../stores/useTocStore';
 import { useBooksStore } from '../stores/useBooksStore';
+import { capitalizeFirstLetterOfEachWord } from '../misc/utils';
 
 
 interface TableOfContentsProps {
@@ -130,7 +131,7 @@ export function TableOfContents({
           .style('font-size', '12px')
           .style('max-width', '300px')
           .html(`
-            <div><strong>${d.title}</strong></div>
+            <div><strong>${capitalizeFirstLetterOfEachWord(d.title)}</strong></div>
             <div>Pages: ${d.start_page_number}${d.end_page_number ? ` - ${d.end_page_number}` : '+'}</div>
           `);
         
@@ -205,7 +206,7 @@ export function TableOfContents({
       });
 
     labelTexts.each(function(d, i) {
-      const title = d.title || `Ch ${i + 1}`;
+      const title = capitalizeFirstLetterOfEachWord(d.title) || `Ch ${i + 1}`;
       const maxWidth = xScale.bandwidth() * 0.9; // Use 90% of bar width
       const lines = wrapText(title, maxWidth, 12);
       const lineHeight = 14; // Line spacing

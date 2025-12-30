@@ -50,6 +50,7 @@ def page_summary_prompt(page: str, related_chapters: List[str], related_sections
     return f"""
     Extract the summary of the following page text with rules:
     - use bullet points to summarize the page content, identify any key definitions or remarks, assume all the points will be used for an advance exam
+    - if the page contain any formulas, your response should include the LaTeX code of the formula
     - if it contain more than one exercises, mark this page as containing exercise,
     - do not summarize the exercises, just mark this page as containing exercise
     - if it the page contain more than one chapter or section, summarize the chapter or section separately
@@ -210,6 +211,8 @@ class LazyTextbookReader:
     def get_page_content(self, page_number: int, apply_alignment_offset: bool = False) -> str:
         if apply_alignment_offset and self.book_info is not None and self.book_info.book_alignment_offset is not None:
             page_number = page_number + self.book_info.book_alignment_offset
+        else:
+            self.logger.warning(f"Alignment offset not applied for page {page_number}")
 
         extracted_text = self.get_page_as_text(page_number).strip()
 
@@ -424,7 +427,7 @@ class LazyTextbookReader:
     # Page related functions
     # ------------------------------------------------------------
 
-    def create_or_update_page_info(self, page_number: int):
+    def create_or_update_page_info(self, page_number: int, apply_alignment_offset: bool = False):
         if self.book_info is None or self.book_info.book_id is None:
             raise ValueError("Book basic information not extracted, please extract it first")
 
@@ -432,11 +435,9 @@ class LazyTextbookReader:
         related_chapters = [chapter.title for chapter in self.database.get_chapters_by_book_id_and_page_range(self.book_info.book_id, page_number, page_number)]
         related_sections = [section.title for section in self.database.get_sections_by_book_id_and_page_range(self.book_info.book_id, page_number, page_number)]
         
-        page_text = self.get_page_content(page_number)
+        page_text = self.get_page_content(page_number, apply_alignment_offset=apply_alignment_offset)
         page_summary = self.llm.prompt_with_schema(page_summary_prompt(page_text, related_chapters, related_sections), schema=PageSchema)
 
         page_id = self.database.try_create_page_info(self.book_info.book_id, page_number, page_summary.full_summary())
 
         return page_id
-
-
