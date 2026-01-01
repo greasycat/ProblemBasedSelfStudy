@@ -3,16 +3,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{instrument, warn};
 
-// TODO: Did this for fun, should be removed if not needed in the future
-macro_rules! with_sources {
-    ($builder:expr; $($source:expr),*$(,)?) => {
-        $builder
-        $(
-            .add_source($source)
-        )*
-    };
-}
-
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("Configuration Load Error")]
@@ -25,7 +15,7 @@ pub enum ConfigError {
     TomlSerializationEror(#[from] toml::ser::Error),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ServerConfig {
     pub addr: String,
     pub port: u16,
@@ -40,40 +30,8 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(remote = "LLMBackend")]
-pub enum LLMBackendDef {
-    /// OpenAI API provider (GPT-3, GPT-4, etc.)
-    OpenAI,
-    /// Anthropic API provider (Claude models)
-    Anthropic,
-    /// Ollama local LLM provider for self-hosted models
-    Ollama,
-    /// DeepSeek API provider for their LLM models
-    DeepSeek,
-    /// X.AI (formerly Twitter) API provider
-    XAI,
-    /// Phind API provider for code-specialized models
-    Phind,
-    /// Google Gemini API provider
-    Google,
-    /// Groq API provider
-    Groq,
-    /// Azure OpenAI API provider
-    AzureOpenAI,
-    /// ElevenLabs API provider
-    ElevenLabs,
-    /// Cohere API provider
-    Cohere,
-    /// Mistral API provider
-    Mistral,
-    /// OpenRouter API provider
-    OpenRouter,
-    /// HuggingFace Inference Providers API
-    HuggingFace,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProviderConfig {
     pub mineru_addr: String,
     pub mineru_port: u16,
@@ -94,14 +52,17 @@ impl Default for ProviderConfig {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub provider: ProviderConfig,
 }
 
 pub fn load_config(path: &std::path::Path) -> Result<Config, ConfigError> {
-    Ok(with_sources!(config::Config::builder(); config::File::from(path), config::Environment::with_prefix("LAZYREADER"))
+    Ok(config::Config::builder()
+        .add_source(config::File::from(path))
+        .add_source(config::Environment::with_prefix("LAZYREADER"))
         .build()?
         .try_deserialize::<Config>()?)
 }
@@ -205,4 +166,37 @@ port = 8765
         let config = load_config(&temp_file.path);
         assert!(config.is_err());
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(remote = "LLMBackend")]
+pub enum LLMBackendDef {
+    /// OpenAI API provider (GPT-3, GPT-4, etc.)
+    OpenAI,
+    /// Anthropic API provider (Claude models)
+    Anthropic,
+    /// Ollama local LLM provider for self-hosted models
+    Ollama,
+    /// DeepSeek API provider for their LLM models
+    DeepSeek,
+    /// X.AI (formerly Twitter) API provider
+    XAI,
+    /// Phind API provider for code-specialized models
+    Phind,
+    /// Google Gemini API provider
+    Google,
+    /// Groq API provider
+    Groq,
+    /// Azure OpenAI API provider
+    AzureOpenAI,
+    /// ElevenLabs API provider
+    ElevenLabs,
+    /// Cohere API provider
+    Cohere,
+    /// Mistral API provider
+    Mistral,
+    /// OpenRouter API provider
+    OpenRouter,
+    /// HuggingFace Inference Providers API
+    HuggingFace,
 }

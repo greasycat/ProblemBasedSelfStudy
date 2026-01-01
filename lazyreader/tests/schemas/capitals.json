@@ -1,0 +1,21 @@
+{
+    "name": "capitals",
+    "schema": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "country": {
+                    "type": "string"
+                },
+                "capital": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "country",
+                "capital"
+            ]
+        }
+    }
+}
