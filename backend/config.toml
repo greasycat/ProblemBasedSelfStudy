@@ -1,0 +1,8 @@
+[server]
+addr = "0.0.0.0"
+port = 8765
+
+[provider]
+mineru_addr = "localhost"
+mineru_port = 8000
+llm_backend = "Google"
