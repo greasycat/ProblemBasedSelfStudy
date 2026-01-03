@@ -30,7 +30,6 @@ impl Default for ServerConfig {
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProviderConfig {
     pub mineru_addr: String,
@@ -51,7 +50,6 @@ impl Default for ProviderConfig {
         }
     }
 }
-
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -137,7 +135,7 @@ mod tests {
         assert_eq!(config.server.addr, "0.0.0.0");
         assert_eq!(config.server.port, 8765);
         assert_eq!(config.provider.mineru_addr, "localhost");
-        assert_eq!(config.provider.mineru_port, 8000);
+        assert_eq!(config.provider.mineru_port, 8848);
     }
 
     #[test]
@@ -149,7 +147,7 @@ port = 8765
 
 [provider]
 mineru_addr = localhost
-mineru_port = 8000
+mineru_port = 8848
             "#;
         let temp_file = TempFile::new(toml_string);
         let config = load_config(&temp_file.path);

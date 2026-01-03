@@ -167,6 +167,7 @@ fn create_schema_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dotenvy::dotenv;
 
     async fn wait_for_job_to_complete(model: &mut Model, job_id: &str) -> Option<String> {
         use std::time::{Duration, Instant};
@@ -204,6 +205,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_model_with_schema() {
+        dotenv().ok();
         let schema = include_str!("../tests/schemas/capitals.json");
 
         let schema: StructuredOutputFormat = serde_json::from_str(schema).unwrap();
@@ -226,6 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_model() {
+        dotenv().ok();
         let mut model = Model::new(JobPool::new(), ProviderConfig::default()).unwrap();
         let job_id =
             model.submit_text_only_job(text_only_messages!("What is the capital of France?"));

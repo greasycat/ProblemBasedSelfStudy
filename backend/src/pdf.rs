@@ -1,4 +1,5 @@
 use crate::config::ProviderConfig;
+use crate::detector::{BayesDetector, BayesDetectorBuilder, DetectorDataBuilder, DetectorError};
 
 use derive_builder::Builder;
 use pdf2image::{PDF as PDF2Image, PDF2ImageError, Pages, RenderOptionsBuilder, image};
@@ -27,6 +28,8 @@ pub enum PDFError {
     PDF2ImageError(#[from] PDF2ImageError),
     #[error("Render options build error: {0}")]
     RenderOptionsBuildError(String),
+    #[error("Detector error: {0}")]
+    DetectorError(#[from] DetectorError),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Builder)]
@@ -110,13 +113,21 @@ impl MinerUResponse {
 pub struct PDF {
     client: Client,
     providier_config: ProviderConfig,
+    detector: BayesDetector,
 }
 
 impl PDF {
     pub fn new(provider_config: ProviderConfig) -> Self {
+        let detector = BayesDetectorBuilder::new()
+            .bernoulli_parameter("word_contents_present", 0.7, 0.1)
+            .bernoulli_parameter("word_index_bibliography_present", 0.95, 0.5)
+            .poisson_parameter("word_chapter_count", 3.0, 1.0)
+            .build();
+
         Self {
             client: Client::new(),
             providier_config: provider_config,
+            detector,
         }
     }
 
@@ -160,14 +171,33 @@ impl PDF {
         )?;
         Ok(images)
     }
+
+    pub async fn detect_toc(&self, text: &str) -> Result<bool, PDFError> {
+        let text = text.to_lowercase();
+        let word_contents_present = text.contains("contents");
+        let word_index_bibliography_present =
+            text.contains("bibliography") && text.contains("index");
+        let word_chapter_count = text.matches("chapter").count();
+        let data = DetectorDataBuilder::new()
+            .add_bernoulli_value("word_contents_present", word_contents_present)
+            .add_bernoulli_value(
+                "word_index_bibliography_present",
+                word_index_bibliography_present,
+            )
+            .add_poisson_value("word_chapter_count", word_chapter_count as u32)
+            .build();
+        let result = self.detector.detect(data, 0.65)?;
+        Ok(result.is_true)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[tokio::test]
-    async fn test_ocr() {
+    async fn test_ocr_hello_world() {
         let pdf = PDF::new(ProviderConfig::default());
         let request_params = MinerURequestBuilder::default()
             .start_page_id(0)
@@ -179,7 +209,11 @@ mod tests {
             .unwrap();
         println!("{}", markdown);
         assert!(markdown.to_lowercase().contains("hello"));
+    }
 
+    #[tokio::test]
+    async fn test_ocr_wikipedia_pdf() {
+        let pdf = PDF::new(ProviderConfig::default());
         let request_params = MinerURequestBuilder::default()
             .start_page_id(1)
             .end_page_id(1)
@@ -191,7 +225,11 @@ mod tests {
             .unwrap();
         println!("{}", markdown);
         assert!(markdown.to_lowercase().contains("technical details"));
+    }
 
+    #[tokio::test]
+    async fn test_ocr_wikipedia_png_no_formula() {
+        let pdf = PDF::new(ProviderConfig::default());
         let request_params = MinerURequestBuilder::default()
             .start_page_id(0)
             .formula_enable(false)
@@ -204,5 +242,46 @@ mod tests {
         println!("{}", markdown);
         assert!(markdown.to_lowercase().contains("encyclopedia"));
         assert!(!markdown.to_lowercase().contains("begin"));
+    }
+
+    #[tokio::test]
+    async fn test_pdf_to_images_and_ocr() {
+        let pdf = PDF::new(ProviderConfig::default());
+        let images = pdf
+            .pdf_to_images(&Path::new("./tests/pdfs/topology_scan.pdf"), 4..=6)
+            .await
+            .unwrap();
+        assert!(images.len() == 3);
+        // save the images to a file
+        let temp_dir = tempdir().unwrap();
+
+        let mut image_paths = Vec::<std::path::PathBuf>::new();
+
+        for (i, image) in images.iter().enumerate() {
+            let image_path = temp_dir.path().join(format!("image_{}.jpeg", i));
+            image
+                .save_with_format(image_path.clone(), image::ImageFormat::Jpeg)
+                .unwrap();
+            println!("Saved image to {}", image_path.display());
+            image_paths.push(image_path);
+        }
+        let test_markdowns = vec!["barbara", "content"];
+
+        let mut markdown = String::new();
+
+        for image_path in image_paths.iter() {
+            let pdf = PDF::new(ProviderConfig::default());
+            let request_params = MinerURequestBuilder::default()
+                .start_page_id(0)
+                .build()
+                .unwrap();
+            markdown.push_str(&pdf.ocr(image_path, request_params).await.unwrap());
+        }
+
+        println!("{}", markdown);
+
+        test_markdowns.iter().for_each(|test_markdown| {
+            assert!(markdown.to_lowercase().contains(test_markdown));
+        });
     }
 }

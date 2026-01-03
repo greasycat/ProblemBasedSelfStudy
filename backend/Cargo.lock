@@ -1108,6 +1108,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "645cbb3a84e60b7531617d5ae4e57f7e27308f6445f5abf653209ea76dec8dff"
 
 [[package]]
+name = "float-cmp"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "flume"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1808,6 +1817,8 @@ dependencies = [
  "config",
  "derive_builder",
  "dirs",
+ "dotenvy",
+ "float-cmp",
  "llm",
  "log",
  "pdf2image",
@@ -2439,6 +2450,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc58e2d255979a31caa7cabfa7aac654af0354220719ab7a68520ae7a91e8c0b"
 dependencies = [
  "serde",
+ "sqlx",
 ]
 
 [[package]]
@@ -3162,6 +3174,7 @@ dependencies = [
  "chrono",
  "inherent",
  "ordered-float",
+ "pgvector",
  "rust_decimal",
  "serde_json",
  "time",
@@ -3176,6 +3189,7 @@ checksum = "b0019f47430f7995af63deda77e238c17323359af241233ec768aba1faea7608"
 dependencies = [
  "bigdecimal",
  "chrono",
+ "pgvector",
  "rust_decimal",
  "sea-query",
  "serde_json",

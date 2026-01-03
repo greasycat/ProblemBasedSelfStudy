@@ -1,4 +1,5 @@
 pub mod config;
+pub mod detector;
 pub mod job;
 pub mod model;
 pub mod pdf;
